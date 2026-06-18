@@ -179,6 +179,7 @@ def install_missing(
             ask_license=ask_license,
             location=location,
             dry_run=False,
+            raise_on_error=False,
         )
 
 
@@ -236,18 +237,19 @@ def _install_single_font(
     ask_license: bool,
     location: str,
     dry_run: bool,
-) -> None:
+    raise_on_error: bool = True,
+) -> bool:
     probe = backend.probe_install(font_name)
     if probe.stderr:
         console.print(probe.stderr.strip())
     if not probe.available:
-        raise typer.Exit(code=1)
+        return _handle_install_failure(1, raise_on_error)
     console.print(
         f"Fontist: {font_name} disponible"
         + (" déjà installée par Fontist" if probe.installed else "")
     )
     if dry_run:
-        return
+        return True
 
     result = backend.install(
         font_name,
@@ -257,7 +259,7 @@ def _install_single_font(
     )
     if result.installed:
         _print_install_success(result)
-        return
+        return True
 
     combined = f"{result.stdout}\n{result.stderr}"
     if output_mentions_license(combined) and not accept_license and ask_license:
@@ -271,13 +273,14 @@ def _install_single_font(
             )
             if accepted_result.installed:
                 _print_install_success(accepted_result)
-                return
+                return True
             console.print(accepted_result.stderr.strip() or accepted_result.stdout.strip())
-            raise typer.Exit(code=accepted_result.returncode or 1)
-        raise typer.Exit(code=1)
+            return _handle_install_failure(accepted_result.returncode or 1, raise_on_error)
+        console.print(f"[yellow]Licence refusée[/yellow] {font_name}")
+        return _handle_install_failure(1, raise_on_error)
 
     console.print(result.stderr.strip() or result.stdout.strip())
-    raise typer.Exit(code=result.returncode or 1)
+    return _handle_install_failure(result.returncode or 1, raise_on_error)
 
 
 def _print_install_success(result: FontistInstallResult) -> None:
@@ -287,6 +290,12 @@ def _print_install_success(result: FontistInstallResult) -> None:
         exact = "oui" if status.exact_installed else "non"
         matched = status.matched_family or "inconnu"
         console.print(f"Vérification Fontconfig: exact={exact}, fc-match={matched}")
+
+
+def _handle_install_failure(code: int, raise_on_error: bool) -> bool:
+    if raise_on_error:
+        raise typer.Exit(code=code)
+    return False
 
 
 def _validate_install_location(location: str) -> str:
