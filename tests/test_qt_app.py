@@ -3,11 +3,65 @@ from __future__ import annotations
 from pathlib import Path
 
 from pptx_font_resolver.models import FontStatus, FontSummary, ScanResult
-from pptx_font_resolver.qt_app import font_row, qt_dependency_message, summary_text
+from pptx_font_resolver.qt_app import (
+    font_row,
+    install_prompt_text,
+    is_installable_font,
+    qt_dependency_message,
+    summary_text,
+)
 
 
 def test_qt_dependency_message_mentions_gui_extra():
     assert ".[gui]" in qt_dependency_message()
+
+
+def test_install_prompt_mentions_fontist_license_and_font_name():
+    message = install_prompt_text("Wingdings")
+
+    assert "Wingdings" in message
+    assert "Fontist" in message
+    assert "license" in message
+
+
+def test_is_installable_font_requires_missing_exact_status():
+    unknown = FontSummary(
+        family="Unknown",
+        occurrences=1,
+        files=(),
+        embedded_in=(),
+        status=None,
+        metric_fallbacks=(),
+        risk_level="unknown",
+        risk_reason="unknown",
+        recommendation="check",
+    )
+    missing = FontSummary(
+        family="Wingdings",
+        occurrences=1,
+        files=(),
+        embedded_in=(),
+        status=FontStatus("Wingdings", exact_installed=False),
+        metric_fallbacks=(),
+        risk_level="high",
+        risk_reason="missing exact font",
+        recommendation="install",
+    )
+    installed = FontSummary(
+        family="Arial",
+        occurrences=1,
+        files=(),
+        embedded_in=(),
+        status=FontStatus("Arial", exact_installed=True),
+        metric_fallbacks=(),
+        risk_level="none",
+        risk_reason="exact font installed",
+        recommendation="none",
+    )
+
+    assert is_installable_font(unknown) is True
+    assert is_installable_font(missing) is True
+    assert is_installable_font(installed) is False
 
 
 def test_font_row_formats_status_and_counts():

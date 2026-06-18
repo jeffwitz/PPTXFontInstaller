@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .analysis import AnalysisResult
+from .fontist_backend import FontistBackend
 from .models import FontSummary
 from .report import to_csv, to_json, to_markdown, write_report
 from .resolver import build_font_report
@@ -43,6 +44,17 @@ def summary_text(analysis: AnalysisResult) -> str:
         f"Missing exact fonts: {missing}\n"
         f"High-risk substitutions: {high_risk}"
     )
+
+
+def install_prompt_text(font_name: str) -> str:
+    return (
+        f"Install {font_name} locally with Fontist and accept its license "
+        "if Fontist requires one?"
+    )
+
+
+def is_installable_font(font: FontSummary) -> bool:
+    return font.status is None or not font.status.exact_installed
 
 
 def _load_qt_modules() -> dict[str, Any]:
@@ -118,8 +130,38 @@ def build_main_window(qt: dict[str, Any]):
             except Exception as exc:
                 self.failed.emit(str(exc))
 
+    class InstallWorker(QThread):
+        progress = Signal(str)
+        failed = Signal(str)
+        finished = Signal()
+
+        def __init__(self, font_names: list[str], location: str = "user") -> None:
+            super().__init__()
+            self.font_names = font_names
+            self.location = location
+
+        def run(self) -> None:
+            backend = FontistBackend()
+            for index, font_name in enumerate(self.font_names, start=1):
+                self.progress.emit(
+                    f"Installing {font_name} ({index}/{len(self.font_names)})..."
+                )
+                result = backend.install(
+                    font_name,
+                    accept_license=True,
+                    location=self.location,
+                    update_fontconfig=True,
+                )
+                if result.installed:
+                    self.progress.emit(f"Installed {font_name}.")
+                else:
+                    message = result.stderr.strip() or result.stdout.strip()
+                    self.failed.emit(f"{font_name}: {message or 'Fontist install failed'}")
+            self.finished.emit()
+
     class MainWindow(QMainWindow):
         columns = [
+            "Install",
             "Font",
             "Risk",
             "Exact",
@@ -135,6 +177,7 @@ def build_main_window(qt: dict[str, Any]):
             self.resize(1100, 720)
             self.analysis: AnalysisResult | None = None
             self.worker: ScanWorker | None = None
+            self.install_worker: InstallWorker | None = None
 
             self.path_edit = QLineEdit()
             self.path_edit.setPlaceholderText("Folder containing PPTX files")
@@ -146,6 +189,7 @@ def build_main_window(qt: dict[str, Any]):
             self.jobs_spin.setValue(default_jobs())
             self.only_missing = QCheckBox("Only missing")
             self.scan_button = QPushButton("Scan")
+            self.install_button = QPushButton("Install selected")
             self.export_json_button = QPushButton("Export JSON")
             self.export_csv_button = QPushButton("Export CSV")
             self.export_md_button = QPushButton("Export Markdown")
@@ -172,6 +216,7 @@ def build_main_window(qt: dict[str, Any]):
             top.addWidget(self.jobs_spin)
             top.addWidget(self.only_missing)
             top.addWidget(self.scan_button)
+            top.addWidget(self.install_button)
 
             exports = QHBoxLayout()
             exports.addStretch(1)
@@ -193,11 +238,13 @@ def build_main_window(qt: dict[str, Any]):
             self.browse_button.clicked.connect(self.choose_folder)
             self.scan_button.clicked.connect(self.start_scan)
             self.only_missing.stateChanged.connect(self.populate_table)
+            self.install_button.clicked.connect(self.install_selected_fonts)
             self.table.itemSelectionChanged.connect(self.show_selected_details)
             self.export_json_button.clicked.connect(lambda: self.export_report("json"))
             self.export_csv_button.clicked.connect(lambda: self.export_report("csv"))
             self.export_md_button.clicked.connect(lambda: self.export_report("markdown"))
             self._set_export_enabled(False)
+            self.install_button.setEnabled(False)
 
         def choose_folder(self) -> None:
             folder = QFileDialog.getExistingDirectory(self, "Select folder")
@@ -247,11 +294,23 @@ def build_main_window(qt: dict[str, Any]):
                 fonts = self.analysis.fonts
             self.table.setRowCount(len(fonts))
             for row, font in enumerate(fonts):
-                for column, value in enumerate(font_row(font)):
+                install_item = QTableWidgetItem("")
+                install_item.setData(Qt.UserRole, font)
+                if is_installable_font(font):
+                    install_item.setFlags(
+                        Qt.ItemIsEnabled | Qt.ItemIsSelectable | Qt.ItemIsUserCheckable
+                    )
+                    install_item.setCheckState(Qt.Unchecked)
+                else:
+                    install_item.setFlags(Qt.ItemIsSelectable)
+                    install_item.setCheckState(Qt.Unchecked)
+                self.table.setItem(row, 0, install_item)
+                for offset, value in enumerate(font_row(font), start=1):
                     item = QTableWidgetItem(value)
                     item.setData(Qt.UserRole, font)
-                    self.table.setItem(row, column, item)
+                    self.table.setItem(row, offset, item)
             self.table.resizeRowsToContents()
+            self.install_button.setEnabled(any(is_installable_font(font) for font in fonts))
 
         def show_selected_details(self) -> None:
             selected = self.table.selectedItems()
@@ -268,6 +327,74 @@ def build_main_window(qt: dict[str, Any]):
             ]
             lines.extend(f"- {path}" for path in font.files)
             self.details.setPlainText("\n".join(lines))
+
+        def selected_install_fonts(self) -> list[FontSummary]:
+            selected: list[FontSummary] = []
+            for row in range(self.table.rowCount()):
+                item = self.table.item(row, 0)
+                if item is None or item.checkState() != Qt.Checked:
+                    continue
+                font = item.data(Qt.UserRole)
+                if is_installable_font(font):
+                    selected.append(font)
+            return selected
+
+        def install_selected_fonts(self) -> None:
+            selected = self.selected_install_fonts()
+            if not selected:
+                QMessageBox.information(
+                    self,
+                    "No fonts selected",
+                    "Check one or more missing fonts first.",
+                )
+                return
+
+            accepted: list[str] = []
+            accept_all = False
+            for font in selected:
+                if not accept_all:
+                    answer = self.ask_install_decision(font.family)
+                    if answer == "no":
+                        continue
+                    if answer == "all":
+                        accept_all = True
+                accepted.append(font.family)
+
+            if not accepted:
+                return
+
+            self.install_button.setEnabled(False)
+            self.scan_button.setEnabled(False)
+            self.summary.setPlainText(f"Installing {len(accepted)} selected font(s)...")
+            self.install_worker = InstallWorker(accepted, location="user")
+            self.install_worker.progress.connect(self.scan_progress)
+            self.install_worker.failed.connect(self.install_failed)
+            self.install_worker.finished.connect(self.install_finished)
+            self.install_worker.start()
+
+        def ask_install_decision(self, font_name: str) -> str:
+            message = QMessageBox(self)
+            message.setWindowTitle("Install font")
+            message.setText(install_prompt_text(font_name))
+            yes_button = message.addButton("Yes", QMessageBox.YesRole)
+            all_button = message.addButton("All", QMessageBox.AcceptRole)
+            no_button = message.addButton("No", QMessageBox.NoRole)
+            message.setDefaultButton(yes_button)
+            message.exec()
+            clicked = message.clickedButton()
+            if clicked == no_button:
+                return "no"
+            if clicked == all_button:
+                return "all"
+            return "yes"
+
+        def install_failed(self, message: str) -> None:
+            self.summary.append(f"Install failed: {message}")
+
+        def install_finished(self) -> None:
+            self.summary.append("Installation finished. Refreshing scan...")
+            self.scan_button.setEnabled(True)
+            self.start_scan()
 
         def export_report(self, format_name: str) -> None:
             if self.analysis is None:
