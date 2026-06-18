@@ -19,6 +19,8 @@ python -m pip install -e ".[dev]"
 pptx-font-resolver scan ./slides --depth infinite
 pptx-font-resolver fonts ./slides --all-fonts --show-files
 pptx-font-resolver report ./slides --format json --output report.json
+pptx-font-resolver install-font "Aptos" --location user
+pptx-font-resolver install-missing ./slides --ask --location user
 ```
 
 No font is downloaded or installed automatically. Fontist installation support
@@ -38,3 +40,5 @@ is intentionally interactive and requires explicit license acceptance.
   CJK fonts substituted by Latin families.
 - Conservative style-suffix normalization, such as treating
   `Noto Sans CJK SC Regular` as installed when `Noto Sans CJK SC` is present.
+- Fontist-backed local user installation commands with dry-run and per-font
+  confirmation support.

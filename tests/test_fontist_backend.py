@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pptx_font_resolver.fontist_backend import FontistBackend
+from pptx_font_resolver.fontist_backend import FontistBackend, output_mentions_license
 
 
 class Completed:
@@ -22,8 +22,10 @@ def test_probe_never_accepts_all_licenses(monkeypatch):
 
     result = FontistBackend().probe_install("Aptos")
 
-    assert result.license_required is True
+    assert result.available is True
+    assert result.license_required is False
     assert "--accept-all-licenses" not in calls[0]
+    assert calls[0][:2] == ["fontist", "list"]
 
 
 def test_install_adds_license_acceptance_only_when_explicit(monkeypatch):
@@ -38,6 +40,13 @@ def test_install_adds_license_acceptance_only_when_explicit(monkeypatch):
     FontistBackend().install("Aptos", accept_license=False)
     FontistBackend().install("Aptos", accept_license=True)
 
-    assert "--accept-all-licenses" not in calls[0]
-    assert "--accept-all-licenses" in calls[1]
+    install_calls = [call for call in calls if call[:2] == ["fontist", "install"]]
+    assert "--accept-all-licenses" not in install_calls[0]
+    assert "--accept-all-licenses" in install_calls[1]
+    assert "--location" in install_calls[0]
+    assert "user" in install_calls[0]
 
+
+def test_output_mentions_license_detects_acceptance_prompt():
+    assert output_mentions_license("License agreement must be accepted") is True
+    assert output_mentions_license("Font not found") is False

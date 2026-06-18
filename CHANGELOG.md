@@ -14,6 +14,8 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
 - Fontconfig diagnostics and metric-compatible fallback hints.
 - Fontist backend wrapper that requires explicit license acceptance.
 - GitHub Actions CI, issue templates, and pull request template.
+- `install-font` and `install-missing` CLI commands for Fontist-backed local
+  user installs.
 
 ### Changed
 
