@@ -20,9 +20,13 @@ dev = [
   "pytest>=7.4",
   "ruff>=0.5",
 ]
+gui = [
+  "PySide6>=6.7",
+]
 
 [project.scripts]
 pptx-font-resolver = "pptx_font_resolver.cli:app"
+pptx-font-resolver-gui = "pptx_font_resolver.qt_app:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -18,6 +18,7 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
   user installs.
 - install-missing now defaults to accepting licenses for explicitly selected
   fonts and uses Yes / All / No prompts.
+- Optional PySide6 GUI for folder scanning and report export.
 
 ### Changed
 

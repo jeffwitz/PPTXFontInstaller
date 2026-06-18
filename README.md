@@ -5,12 +5,13 @@ fonts they use, whether those fonts are installed exactly, and which Fontconfig
 substitutions or metric-compatible fallbacks are available.
 
 The first target is reliable CLI behavior for large folders of presentations.
-The local web interface will reuse the same Python core later.
+The optional Qt GUI reuses the same Python analysis core as the CLI.
 
 ## Install for development
 
 ```bash
 python -m pip install -e ".[dev]"
+python -m pip install -e ".[gui]"  # optional Qt GUI
 ```
 
 ## Commands
@@ -21,6 +22,7 @@ pptx-font-resolver fonts ./slides --all-fonts --show-files
 pptx-font-resolver report ./slides --format json --output report.json
 pptx-font-resolver install-font "Aptos" --location user
 pptx-font-resolver install-missing ./slides --ask --location user
+pptx-font-resolver-gui
 ```
 
 No font is downloaded or installed automatically. Fontist installation support
@@ -42,3 +44,5 @@ is intentionally interactive and requires explicit license acceptance.
   `Noto Sans CJK SC Regular` as installed when `Noto Sans CJK SC` is present.
 - Fontist-backed local user installation commands with dry-run, per-font
   confirmation support, and Yes / All / No prompts.
+- Optional PySide6 GUI for selecting a folder, scanning in the background,
+  reviewing font risk, and exporting JSON/CSV/Markdown reports.

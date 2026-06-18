@@ -8,10 +8,10 @@ from rich.console import Console
 from rich.prompt import Prompt
 from rich.table import Table
 
+from .analysis import analyze_path
 from .fontist_backend import FontistBackend, FontistInstallResult, output_mentions_license
 from .report import to_csv, to_json, to_markdown, write_report
-from .resolver import build_font_report
-from .scanner import default_jobs, scan_folder
+from .scanner import default_jobs
 
 app = typer.Typer(help="Scan PPTX files and diagnose missing Linux fonts.")
 console = Console()
@@ -24,17 +24,18 @@ def scan(
     jobs: Annotated[int, typer.Option(help="Parallel workers.")] = default_jobs(),
     format: Annotated[str, typer.Option(help="table or json.")] = "table",
 ) -> None:
-    result = scan_folder(folder, depth=depth, jobs=jobs)
-    fonts = build_font_report(result, use_fontconfig=False)
+    analysis = analyze_path(folder, depth=depth, jobs=jobs, use_fontconfig=False)
     if format == "json":
-        console.print_json(to_json(result, fonts))
+        console.print_json(to_json(analysis.scan, analysis.fonts))
         return
     if format != "table":
         raise typer.BadParameter("format must be table or json")
-    embedded_count = sum(1 for document in result.documents if document.embedded_font_entries)
-    console.print(f"PPTX analysés : {len(result.documents)}")
-    console.print(f"Polices uniques : {len(fonts)}")
-    console.print(f"PPTX invalides : {len(result.errors)}")
+    embedded_count = sum(
+        1 for document in analysis.scan.documents if document.embedded_font_entries
+    )
+    console.print(f"PPTX analysés : {analysis.documents_scanned}")
+    console.print(f"Polices uniques : {analysis.unique_fonts}")
+    console.print(f"PPTX invalides : {analysis.invalid_documents}")
     console.print(f"Polices embarquées détectées : {embedded_count}")
 
 
@@ -55,8 +56,8 @@ def fonts(
         typer.Option(help="Only show fonts not exactly installed."),
     ] = False,
 ) -> None:
-    result = scan_folder(folder, depth=depth, jobs=jobs)
-    summaries = build_font_report(result, use_fontconfig=True)
+    analysis = analyze_path(folder, depth=depth, jobs=jobs, use_fontconfig=True)
+    summaries = analysis.fonts
     if only_missing:
         summaries = tuple(
             font for font in summaries if not (font.status and font.status.exact_installed)
@@ -64,7 +65,7 @@ def fonts(
     elif not all_fonts:
         summaries = tuple(summaries)
 
-    content = _format_output(format, result, summaries, show_files=show_files)
+    content = _format_output(format, analysis.scan, summaries, show_files=show_files)
     if output is not None:
         write_report(output, content)
     else:
@@ -79,9 +80,8 @@ def report(
     format: Annotated[str, typer.Option(help="json, csv, or markdown.")] = "json",
     output: Annotated[Path | None, typer.Option(help="Report output file.")] = None,
 ) -> None:
-    result = scan_folder(folder, depth=depth, jobs=jobs)
-    summaries = build_font_report(result, use_fontconfig=True)
-    content = _format_output(format, result, summaries, show_files=True)
+    analysis = analyze_path(folder, depth=depth, jobs=jobs, use_fontconfig=True)
+    content = _format_output(format, analysis.scan, analysis.fonts, show_files=True)
     if output is None:
         console.print(content)
     else:
@@ -148,13 +148,8 @@ def install_missing(
             "install-missing cannot accept licenses without --ask confirmation per font"
         )
 
-    result = scan_folder(folder, depth=depth, jobs=jobs)
-    summaries = build_font_report(result, use_fontconfig=True)
-    candidates = [
-        font
-        for font in summaries
-        if font.status is None or not font.status.exact_installed
-    ]
+    analysis = analyze_path(folder, depth=depth, jobs=jobs, use_fontconfig=True)
+    candidates = list(analysis.missing_fonts)
     if not candidates:
         console.print("Aucune police manquante détectée.")
         return
