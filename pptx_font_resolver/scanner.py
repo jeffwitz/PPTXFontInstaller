@@ -31,23 +31,44 @@ def parse_depth(depth: int | str | None) -> int | None:
 
 
 def iter_pptx_paths(root: Path, depth: int | str | None = None) -> tuple[Path, ...]:
+    paths, _errors = discover_pptx_paths(root, depth)
+    return paths
+
+
+def discover_pptx_paths(
+    root: Path,
+    depth: int | str | None = None,
+) -> tuple[tuple[Path, ...], tuple[ScanError, ...]]:
     root = root.expanduser().resolve()
     max_depth = parse_depth(depth)
     if root.is_file():
-        return (root,) if root.suffix.lower() == ".pptx" else ()
+        paths = (root,) if root.suffix.lower() == ".pptx" else ()
+        return paths, ()
     if not root.exists():
         raise FileNotFoundError(root)
 
     paths: list[Path] = []
+    errors: list[ScanError] = []
     stack: list[tuple[Path, int]] = [(root, 0)]
     while stack:
         directory, current_depth = stack.pop()
-        for entry in directory.iterdir():
-            if entry.is_file() and entry.suffix.lower() == ".pptx":
-                paths.append(entry)
-            elif entry.is_dir() and (max_depth is None or current_depth < max_depth):
-                stack.append((entry, current_depth + 1))
-    return tuple(sorted(paths, key=lambda path: str(path).casefold()))
+        try:
+            entries = tuple(directory.iterdir())
+        except OSError as exc:
+            errors.append(ScanError(path=directory, message=str(exc)))
+            continue
+        for entry in entries:
+            try:
+                if entry.is_file() and entry.suffix.lower() == ".pptx":
+                    paths.append(entry)
+                elif entry.is_dir() and (max_depth is None or current_depth < max_depth):
+                    stack.append((entry, current_depth + 1))
+            except OSError as exc:
+                errors.append(ScanError(path=entry, message=str(exc)))
+    return (
+        tuple(sorted(paths, key=lambda path: str(path).casefold())),
+        tuple(sorted(errors, key=lambda error: str(error.path).casefold())),
+    )
 
 
 def scan_folder(
@@ -57,14 +78,14 @@ def scan_folder(
     jobs: int | None = None,
 ) -> ScanResult:
     root = root.expanduser().resolve()
-    paths = iter_pptx_paths(root, depth)
+    paths, walk_errors = discover_pptx_paths(root, depth)
     if not paths:
-        return ScanResult(root=root, documents=(), errors=())
+        return ScanResult(root=root, documents=(), errors=walk_errors)
 
     worker_count = jobs or default_jobs()
     worker_count = max(1, min(worker_count, len(paths)))
     documents: list[PresentationFonts] = []
-    errors: list[ScanError] = []
+    errors: list[ScanError] = list(walk_errors)
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = {executor.submit(parse_pptx, path): path for path in paths}
