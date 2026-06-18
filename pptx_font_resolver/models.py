@@ -67,6 +67,8 @@ class FontStatus:
     matched_family: str | None = None
     matched_file: str | None = None
     is_substituted: bool = False
+    resolved_family: str | None = None
+    detection_note: str | None = None
     check_error: str | None = None
 
 
@@ -78,5 +80,6 @@ class FontSummary:
     embedded_in: tuple[Path, ...]
     status: FontStatus | None
     metric_fallbacks: tuple[str, ...]
+    risk_level: str
+    risk_reason: str
     recommendation: str
-

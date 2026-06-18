@@ -21,6 +21,7 @@ def test_json_report_is_frontend_consumable(tmp_path):
     assert payload["documents_scanned"] == 1
     assert payload["fonts"][0]["family"] == "Calibri"
     assert payload["fonts"][0]["metric_fallbacks"] == ["Carlito"]
+    assert payload["fonts"][0]["risk_level"] == "medium"
 
 
 def test_csv_report_is_valid(tmp_path):
@@ -32,4 +33,4 @@ def test_csv_report_is_valid(tmp_path):
 
     assert rows[0]["family"] == "Arial"
     assert rows[0]["occurrences"] == "1"
-
+    assert rows[0]["risk_level"] == "medium"

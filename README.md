@@ -34,4 +34,7 @@ is intentionally interactive and requires explicit license acceptance.
 - embedded font presence detection through `ppt/fonts/*`;
 - aggregate table, JSON, CSV, and Markdown reporting primitives;
 - Fontconfig status checks and metric-compatible fallback hints.
-
+- Risk classification for dangerous substitutions, including symbol fonts and
+  CJK fonts substituted by Latin families.
+- Conservative style-suffix normalization, such as treating
+  `Noto Sans CJK SC Regular` as installed when `Noto Sans CJK SC` is present.

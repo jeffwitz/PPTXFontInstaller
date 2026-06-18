@@ -103,6 +103,7 @@ def _plain_table(summaries, *, show_files: bool) -> str:
     table.add_column("Police")
     table.add_column("Statut exact")
     table.add_column("Substitution Fontconfig")
+    table.add_column("Risque")
     table.add_column("Occurrences", justify="right")
     table.add_column("Fichiers", justify="right")
     table.add_column("Recommandation")
@@ -118,13 +119,14 @@ def _plain_table(summaries, *, show_files: bool) -> str:
             font.family,
             exact,
             match,
+            font.risk_level,
             str(font.occurrences),
             str(len(font.files)),
             font.recommendation,
         )
         if show_files:
             for file_path in font.files:
-                table.add_row("", "", "", "", str(file_path), "")
+                table.add_row("", "", "", "", "", str(file_path), "")
     console = Console(record=True)
     console.print(table)
     return console.export_text()

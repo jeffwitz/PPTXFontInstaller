@@ -23,3 +23,21 @@ def test_check_font_marks_exact_family_installed(monkeypatch):
     assert status.exact_installed is True
     assert status.is_substituted is False
 
+
+def test_check_font_accepts_regular_style_suffix_when_base_family_exists(monkeypatch):
+    monkeypatch.setattr(fontconfig, "installed_families", lambda: {"noto sans cjk sc"})
+
+    def fake_match(name):
+        if name == "Noto Sans CJK SC":
+            return "Noto Sans CJK SC", "/fonts/NotoSansCJK-Regular.ttc"
+        return "Arimo", "/fonts/Arimo.ttf"
+
+    monkeypatch.setattr(fontconfig, "fc_match", fake_match)
+
+    status = fontconfig.check_font("Noto Sans CJK SC Regular")
+
+    assert status.exact_installed is True
+    assert status.resolved_family == "Noto Sans CJK SC"
+    assert status.matched_family == "Noto Sans CJK SC"
+    assert status.is_substituted is False
+    assert status.detection_note is not None

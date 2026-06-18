@@ -15,3 +15,10 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
 - Fontist backend wrapper that requires explicit license acceptance.
 - GitHub Actions CI, issue templates, and pull request template.
 
+### Changed
+
+- Reports now include `risk_level` and `risk_reason` fields.
+- Fontconfig detection treats unambiguous `Regular` style suffixes as a base
+  family lookup fallback.
+- Symbol font and CJK-to-Latin substitutions now receive higher-risk
+  recommendations.

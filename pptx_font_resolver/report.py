@@ -30,6 +30,8 @@ def font_summary_to_dict(font: FontSummary) -> dict[str, Any]:
         "embedded_in": [str(path) for path in font.embedded_in],
         "status": _status_to_dict(font.status),
         "metric_fallbacks": list(font.metric_fallbacks),
+        "risk_level": font.risk_level,
+        "risk_reason": font.risk_reason,
         "recommendation": font.recommendation,
     }
 
@@ -55,6 +57,8 @@ def to_csv(fonts: tuple[FontSummary, ...]) -> str:
             "files",
             "embedded_in",
             "metric_fallbacks",
+            "risk_level",
+            "risk_reason",
             "recommendation",
         ],
     )
@@ -70,6 +74,8 @@ def to_csv(fonts: tuple[FontSummary, ...]) -> str:
                 "files": ";".join(str(path) for path in font.files),
                 "embedded_in": ";".join(str(path) for path in font.embedded_in),
                 "metric_fallbacks": ";".join(font.metric_fallbacks),
+                "risk_level": font.risk_level,
+                "risk_reason": font.risk_reason,
                 "recommendation": font.recommendation,
             }
         )
@@ -84,16 +90,17 @@ def to_markdown(scan_result: ScanResult, fonts: tuple[FontSummary, ...]) -> str:
         f"- Invalid PPTX: {len(scan_result.errors)}",
         f"- Unique fonts: {len(fonts)}",
         "",
-        "| Font | Exact installed | Fontconfig match | Occurrences | Files | Recommendation |",
-        "| --- | --- | --- | ---: | ---: | --- |",
+        "| Font | Risk | Exact installed | Fontconfig match | Occurrences | "
+        "Files | Recommendation |",
+        "| --- | --- | --- | --- | ---: | ---: | --- |",
     ]
     for font in fonts:
         status = font.status
         exact = "" if status is None else str(status.exact_installed).lower()
         match = "" if status is None else status.matched_family or ""
         lines.append(
-            f"| {font.family} | {exact} | {match} | {font.occurrences} | "
-            f"{len(font.files)} | {font.recommendation} |"
+            f"| {font.family} | {font.risk_level} | {exact} | {match} | "
+            f"{font.occurrences} | {len(font.files)} | {font.recommendation} |"
         )
     return "\n".join(lines) + "\n"
 
