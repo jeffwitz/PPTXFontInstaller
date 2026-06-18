@@ -16,6 +16,8 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
 - GitHub Actions CI, issue templates, and pull request template.
 - `install-font` and `install-missing` CLI commands for Fontist-backed local
   user installs.
+- install-missing now defaults to accepting licenses for explicitly selected
+  fonts and uses Yes / All / No prompts.
 
 ### Changed
 

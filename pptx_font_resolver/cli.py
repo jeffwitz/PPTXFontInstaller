@@ -5,6 +5,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.prompt import Prompt
 from rich.table import Table
 
 from .fontist_backend import FontistBackend, FontistInstallResult, output_mentions_license
@@ -92,8 +93,8 @@ def install_font(
     font_name: Annotated[str, typer.Argument(help="Font family to install.")],
     accept_license: Annotated[
         bool,
-        typer.Option(help="Accept the license for this single font."),
-    ] = False,
+        typer.Option(help="Accept the license for this explicitly selected font."),
+    ] = True,
     ask_license: Annotated[
         bool,
         typer.Option("--ask-license/--no-ask-license", help="Ask if Fontist requires a license."),
@@ -127,8 +128,8 @@ def install_missing(
     ] = True,
     accept_license: Annotated[
         bool,
-        typer.Option(help="Accept licenses for each selected font."),
-    ] = False,
+        typer.Option(help="Accept licenses for each font selected with the install prompt."),
+    ] = True,
     ask_license: Annotated[
         bool,
         typer.Option("--ask-license/--no-ask-license", help="Ask if Fontist requires a license."),
@@ -142,6 +143,11 @@ def install_missing(
         typer.Option(help="Show installable fonts but do not install."),
     ] = False,
 ) -> None:
+    if accept_license and not ask and not dry_run:
+        raise typer.BadParameter(
+            "install-missing cannot accept licenses without --ask confirmation per font"
+        )
+
     result = scan_folder(folder, depth=depth, jobs=jobs)
     summaries = build_font_report(result, use_fontconfig=True)
     candidates = [
@@ -158,6 +164,7 @@ def install_missing(
 
     backend = FontistBackend()
     location = _validate_install_location(location)
+    install_all_remaining = False
     for font in candidates:
         probe = backend.probe_install(font.family)
         if not probe.available:
@@ -169,9 +176,13 @@ def install_missing(
         )
         if dry_run:
             continue
-        if ask and not typer.confirm(f"Installer {font.family} via Fontist en local utilisateur ?"):
-            console.print(f"[yellow]Ignorée[/yellow] {font.family}")
-            continue
+        if ask and not install_all_remaining:
+            choice = _install_choice(font.family, accept_license)
+            if choice == "n":
+                console.print(f"[yellow]Ignorée[/yellow] {font.family}")
+                continue
+            if choice == "a":
+                install_all_remaining = True
         _install_single_font(
             backend,
             font.family,
@@ -296,6 +307,22 @@ def _handle_install_failure(code: int, raise_on_error: bool) -> bool:
     if raise_on_error:
         raise typer.Exit(code=code)
     return False
+
+
+def _install_choice(font_name: str, accept_license: bool) -> str:
+    return Prompt.ask(
+        _install_confirm_message(font_name, accept_license),
+        choices=["y", "a", "n"],
+        default="y",
+        show_choices=True,
+    )
+
+
+def _install_confirm_message(font_name: str, accept_license: bool) -> str:
+    action = f"Installer {font_name} via Fontist en local utilisateur"
+    if accept_license:
+        action += " et accepter sa licence si Fontist la demande"
+    return f"{action} ? [y=yes, a=all, n=no]"
 
 
 def _validate_install_location(location: str) -> str:

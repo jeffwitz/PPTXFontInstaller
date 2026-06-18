@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from pptx_font_resolver.cli import _install_single_font
+import inspect
+
+from pptx_font_resolver.cli import (
+    _install_choice,
+    _install_confirm_message,
+    _install_single_font,
+    install_font,
+    install_missing,
+)
 from pptx_font_resolver.fontist_backend import FontistInstallResult, FontistProbeResult
 
 
@@ -41,3 +49,21 @@ def test_install_single_font_can_return_false_for_group_install(monkeypatch):
 
     assert installed is False
 
+
+
+def test_install_commands_accept_license_by_default():
+    assert inspect.signature(install_font).parameters["accept_license"].default is True
+    assert inspect.signature(install_missing).parameters["accept_license"].default is True
+
+
+def test_install_confirm_message_mentions_license_acceptance():
+    message = _install_confirm_message("Wingdings", accept_license=True)
+
+    assert "Wingdings" in message
+    assert "accepter sa licence" in message
+
+
+def test_install_choice_supports_all(monkeypatch):
+    monkeypatch.setattr("pptx_font_resolver.cli.Prompt.ask", lambda *args, **kwargs: "a")
+
+    assert _install_choice("Wingdings", accept_license=True) == "a"

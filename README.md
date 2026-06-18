@@ -40,5 +40,5 @@ is intentionally interactive and requires explicit license acceptance.
   CJK fonts substituted by Latin families.
 - Conservative style-suffix normalization, such as treating
   `Noto Sans CJK SC Regular` as installed when `Noto Sans CJK SC` is present.
-- Fontist-backed local user installation commands with dry-run and per-font
-  confirmation support.
+- Fontist-backed local user installation commands with dry-run, per-font
+  confirmation support, and Yes / All / No prompts.
