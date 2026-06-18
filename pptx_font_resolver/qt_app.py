@@ -4,10 +4,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .analysis import AnalysisResult, analyze_path
+from .analysis import AnalysisResult
 from .models import FontSummary
 from .report import to_csv, to_json, to_markdown, write_report
-from .scanner import default_jobs
+from .resolver import build_font_report
+from .scanner import default_jobs, scan_folder
 
 
 def qt_dependency_message() -> str:
@@ -96,6 +97,7 @@ def build_main_window(qt: dict[str, Any]):
     class ScanWorker(QThread):
         finished = Signal(object)
         failed = Signal(str)
+        progress = Signal(str)
 
         def __init__(self, folder: Path, depth: str, jobs: int) -> None:
             super().__init__()
@@ -105,14 +107,14 @@ def build_main_window(qt: dict[str, Any]):
 
         def run(self) -> None:
             try:
-                self.finished.emit(
-                    analyze_path(
-                        self.folder,
-                        depth=self.depth,
-                        jobs=self.jobs,
-                        use_fontconfig=True,
-                    )
+                self.progress.emit(f"Discovering PPTX files under {self.folder}...")
+                scan = scan_folder(self.folder, depth=self.depth, jobs=self.jobs)
+                self.progress.emit(
+                    f"Analysed {len(scan.documents)} PPTX; checking Fontconfig..."
                 )
+                fonts = build_font_report(scan, use_fontconfig=True)
+                self.progress.emit(f"Built font report with {len(fonts)} unique fonts.")
+                self.finished.emit(AnalysisResult(scan=scan, fonts=fonts))
             except Exception as exc:
                 self.failed.emit(str(exc))
 
@@ -216,9 +218,13 @@ def build_main_window(qt: dict[str, Any]):
                 self.depth_edit.text().strip() or "infinite",
                 self.jobs_spin.value(),
             )
+            self.worker.progress.connect(self.scan_progress)
             self.worker.finished.connect(self.scan_finished)
             self.worker.failed.connect(self.scan_failed)
             self.worker.start()
+
+        def scan_progress(self, message: str) -> None:
+            self.summary.setPlainText(message)
 
         def scan_finished(self, analysis: AnalysisResult) -> None:
             self.analysis = analysis
@@ -304,6 +310,8 @@ def main() -> None:
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
+    window.raise_()
+    window.activateWindow()
     raise SystemExit(app.exec())
 
 
