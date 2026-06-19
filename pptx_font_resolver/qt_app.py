@@ -62,6 +62,19 @@ def fontist_unavailable_message(font_name: str, stdout: str, stderr: str) -> str
     return f"{font_name}: {detail}"
 
 
+def install_result_summary(unavailable: list[str], failures: list[str]) -> str:
+    lines: list[str] = []
+    if unavailable:
+        lines.append("Fonts not installable with Fontist:")
+        lines.extend(f"- {message}" for message in unavailable)
+    if failures:
+        if lines:
+            lines.append("")
+        lines.append("Font install failures:")
+        lines.extend(f"- {message}" for message in failures)
+    return "\n".join(lines)
+
+
 def _load_qt_modules() -> dict[str, Any]:
     try:
         from PySide6 import QtCore, QtWidgets
@@ -137,6 +150,7 @@ def build_main_window(qt: dict[str, Any]):
 
     class InstallWorker(QThread):
         progress = Signal(str)
+        unavailable = Signal(str)
         failed = Signal(str)
 
         def __init__(self, font_names: list[str], location: str = "user") -> None:
@@ -153,7 +167,7 @@ def build_main_window(qt: dict[str, Any]):
                     )
                     probe = backend.probe_install(font_name)
                     if not probe.available:
-                        self.failed.emit(
+                        self.unavailable.emit(
                             fontist_unavailable_message(
                                 font_name,
                                 probe.stdout,
@@ -200,6 +214,9 @@ def build_main_window(qt: dict[str, Any]):
             self.analysis: AnalysisResult | None = None
             self.worker: ScanWorker | None = None
             self.install_worker: InstallWorker | None = None
+            self.install_unavailable: list[str] = []
+            self.install_failures: list[str] = []
+            self.pending_install_summary: str | None = None
 
             self.path_edit = QLineEdit()
             self.path_edit.setPlaceholderText("Folder containing PPTX files")
@@ -297,7 +314,11 @@ def build_main_window(qt: dict[str, Any]):
 
         def scan_finished(self, analysis: AnalysisResult) -> None:
             self.analysis = analysis
-            self.summary.setPlainText(summary_text(analysis))
+            text = summary_text(analysis)
+            if self.pending_install_summary:
+                text = f"{text}\n\n{self.pending_install_summary}"
+                self.pending_install_summary = None
+            self.summary.setPlainText(text)
             self.populate_table()
             self.scan_button.setEnabled(True)
             self._set_export_enabled(True)
@@ -385,11 +406,15 @@ def build_main_window(qt: dict[str, Any]):
             if not accepted:
                 return
 
+            self.install_unavailable = []
+            self.install_failures = []
+            self.pending_install_summary = None
             self.install_button.setEnabled(False)
             self.scan_button.setEnabled(False)
             self.summary.setPlainText(f"Installing {len(accepted)} selected font(s)...")
             self.install_worker = InstallWorker(accepted, location="user")
             self.install_worker.progress.connect(self.scan_progress)
+            self.install_worker.unavailable.connect(self.install_unavailable_font)
             self.install_worker.failed.connect(self.install_failed)
             self.install_worker.finished.connect(self.install_finished)
             self.install_worker.start()
@@ -410,13 +435,22 @@ def build_main_window(qt: dict[str, Any]):
                 return "all"
             return "yes"
 
+        def install_unavailable_font(self, message: str) -> None:
+            self.install_unavailable.append(message)
+            self.summary.append(f"Not installable with Fontist: {message}")
+
         def install_failed(self, message: str) -> None:
+            self.install_failures.append(message)
             self.summary.append(f"Install failed: {message}")
 
         def install_finished(self) -> None:
             if self.install_worker is not None:
                 self.install_worker.deleteLater()
                 self.install_worker = None
+            self.pending_install_summary = install_result_summary(
+                self.install_unavailable,
+                self.install_failures,
+            )
             self.summary.append("Installation finished. Refreshing scan...")
             self.scan_button.setEnabled(True)
             self.start_scan()

@@ -7,6 +7,7 @@ from pptx_font_resolver.qt_app import (
     font_row,
     fontist_unavailable_message,
     install_prompt_text,
+    install_result_summary,
     is_installable_font,
     qt_dependency_message,
     summary_text,
@@ -32,6 +33,23 @@ def test_fontist_unavailable_message_has_fallback_detail():
         fontist_unavailable_message("Missing Sans", "", "")
         == "Missing Sans: not available through Fontist"
     )
+
+
+def test_install_result_summary_lists_unavailable_fonts():
+    text = install_result_summary(
+        ["Missing Sans: No formula for font.", "Office Cloud: not available"],
+        [],
+    )
+
+    assert "Fonts not installable with Fontist:" in text
+    assert "- Missing Sans: No formula for font." in text
+    assert "- Office Cloud: not available" in text
+
+
+def test_install_result_summary_lists_other_failures():
+    text = install_result_summary([], ["Wingdings: Fontist install failed"])
+
+    assert text == "Font install failures:\n- Wingdings: Fontist install failed"
 
 
 def test_install_prompt_mentions_fontist_license_and_font_name():
