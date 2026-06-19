@@ -57,6 +57,11 @@ def is_installable_font(font: FontSummary) -> bool:
     return font.status is None or not font.status.exact_installed
 
 
+def fontist_unavailable_message(font_name: str, stdout: str, stderr: str) -> str:
+    detail = stderr.strip() or stdout.strip() or "not available through Fontist"
+    return f"{font_name}: {detail}"
+
+
 def _load_qt_modules() -> dict[str, Any]:
     try:
         from PySide6 import QtCore, QtWidgets
@@ -133,7 +138,6 @@ def build_main_window(qt: dict[str, Any]):
     class InstallWorker(QThread):
         progress = Signal(str)
         failed = Signal(str)
-        finished = Signal()
 
         def __init__(self, font_names: list[str], location: str = "user") -> None:
             super().__init__()
@@ -141,23 +145,41 @@ def build_main_window(qt: dict[str, Any]):
             self.location = location
 
         def run(self) -> None:
-            backend = FontistBackend()
-            for index, font_name in enumerate(self.font_names, start=1):
-                self.progress.emit(
-                    f"Installing {font_name} ({index}/{len(self.font_names)})..."
-                )
-                result = backend.install(
-                    font_name,
-                    accept_license=True,
-                    location=self.location,
-                    update_fontconfig=True,
-                )
-                if result.installed:
-                    self.progress.emit(f"Installed {font_name}.")
-                else:
-                    message = result.stderr.strip() or result.stdout.strip()
-                    self.failed.emit(f"{font_name}: {message or 'Fontist install failed'}")
-            self.finished.emit()
+            try:
+                backend = FontistBackend()
+                for index, font_name in enumerate(self.font_names, start=1):
+                    self.progress.emit(
+                        f"Checking {font_name} in Fontist ({index}/{len(self.font_names)})..."
+                    )
+                    probe = backend.probe_install(font_name)
+                    if not probe.available:
+                        self.failed.emit(
+                            fontist_unavailable_message(
+                                font_name,
+                                probe.stdout,
+                                probe.stderr,
+                            )
+                        )
+                        continue
+
+                    self.progress.emit(
+                        f"Installing {font_name} ({index}/{len(self.font_names)})..."
+                    )
+                    result = backend.install(
+                        font_name,
+                        accept_license=True,
+                        location=self.location,
+                        update_fontconfig=True,
+                    )
+                    if result.installed:
+                        self.progress.emit(f"Installed {font_name}.")
+                    else:
+                        message = result.stderr.strip() or result.stdout.strip()
+                        self.failed.emit(
+                            f"{font_name}: {message or 'Fontist install failed'}"
+                        )
+            except Exception as exc:
+                self.failed.emit(f"Unexpected install error: {exc}")
 
     class MainWindow(QMainWindow):
         columns = [
@@ -392,9 +414,28 @@ def build_main_window(qt: dict[str, Any]):
             self.summary.append(f"Install failed: {message}")
 
         def install_finished(self) -> None:
+            if self.install_worker is not None:
+                self.install_worker.deleteLater()
+                self.install_worker = None
             self.summary.append("Installation finished. Refreshing scan...")
             self.scan_button.setEnabled(True)
             self.start_scan()
+
+        def closeEvent(self, event) -> None:
+            running = [
+                worker
+                for worker in (self.worker, self.install_worker)
+                if worker is not None and worker.isRunning()
+            ]
+            if running:
+                QMessageBox.information(
+                    self,
+                    "Operation running",
+                    "Wait for the current scan or install to finish before closing.",
+                )
+                event.ignore()
+                return
+            super().closeEvent(event)
 
         def export_report(self, format_name: str) -> None:
             if self.analysis is None:

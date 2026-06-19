@@ -5,6 +5,7 @@ from pathlib import Path
 from pptx_font_resolver.models import FontStatus, FontSummary, ScanResult
 from pptx_font_resolver.qt_app import (
     font_row,
+    fontist_unavailable_message,
     install_prompt_text,
     is_installable_font,
     qt_dependency_message,
@@ -14,6 +15,23 @@ from pptx_font_resolver.qt_app import (
 
 def test_qt_dependency_message_mentions_gui_extra():
     assert ".[gui]" in qt_dependency_message()
+
+
+def test_fontist_unavailable_message_uses_fontist_output():
+    message = fontist_unavailable_message(
+        "Missing Sans",
+        "",
+        "Font not found locally nor available from Fontist.",
+    )
+
+    assert message == "Missing Sans: Font not found locally nor available from Fontist."
+
+
+def test_fontist_unavailable_message_has_fallback_detail():
+    assert (
+        fontist_unavailable_message("Missing Sans", "", "")
+        == "Missing Sans: not available through Fontist"
+    )
 
 
 def test_install_prompt_mentions_fontist_license_and_font_name():
