@@ -5,8 +5,11 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from .docx_parser import parse_docx
 from .models import PresentationFonts, ScanError, ScanResult
 from .pptx_parser import parse_pptx
+
+SUPPORTED_SUFFIXES = (".pptx", ".docx")
 
 
 def default_jobs() -> int:
@@ -19,14 +22,14 @@ def parse_depth(depth: int | str | None) -> int | None:
         return None
     if isinstance(depth, int):
         if depth < 0:
-            raise ValueError("depth must be >= 0 or 'infinite'")
+            raise ValueError("depth must be >= 0 or \"infinite\"")
         return depth
     try:
         value = int(depth)
     except ValueError as exc:
-        raise ValueError("depth must be an integer or 'infinite'") from exc
+        raise ValueError("depth must be an integer or \"infinite\"") from exc
     if value < 0:
-        raise ValueError("depth must be >= 0 or 'infinite'")
+        raise ValueError("depth must be >= 0 or \"infinite\"")
     return value
 
 
@@ -39,10 +42,25 @@ def discover_pptx_paths(
     root: Path,
     depth: int | str | None = None,
 ) -> tuple[tuple[Path, ...], tuple[ScanError, ...]]:
+    return discover_document_paths(root, depth, suffixes=(".pptx",))
+
+
+def iter_document_paths(root: Path, depth: int | str | None = None) -> tuple[Path, ...]:
+    paths, _errors = discover_document_paths(root, depth)
+    return paths
+
+
+def discover_document_paths(
+    root: Path,
+    depth: int | str | None = None,
+    *,
+    suffixes: tuple[str, ...] = SUPPORTED_SUFFIXES,
+) -> tuple[tuple[Path, ...], tuple[ScanError, ...]]:
     root = root.expanduser().resolve()
     max_depth = parse_depth(depth)
+    allowed = tuple(suffix.casefold() for suffix in suffixes)
     if root.is_file():
-        paths = (root,) if root.suffix.lower() == ".pptx" else ()
+        paths = (root,) if root.suffix.casefold() in allowed else ()
         return paths, ()
     if not root.exists():
         raise FileNotFoundError(root)
@@ -59,7 +77,7 @@ def discover_pptx_paths(
             continue
         for entry in entries:
             try:
-                if entry.is_file() and entry.suffix.lower() == ".pptx":
+                if entry.is_file() and entry.suffix.casefold() in allowed:
                     paths.append(entry)
                 elif entry.is_dir() and (max_depth is None or current_depth < max_depth):
                     stack.append((entry, current_depth + 1))
@@ -71,6 +89,15 @@ def discover_pptx_paths(
     )
 
 
+def parse_document(path: Path) -> PresentationFonts:
+    suffix = path.suffix.casefold()
+    if suffix == ".pptx":
+        return parse_pptx(path)
+    if suffix == ".docx":
+        return parse_docx(path)
+    raise RuntimeError(f"unsupported document type: {path.suffix}")
+
+
 def scan_folder(
     root: Path,
     *,
@@ -78,7 +105,7 @@ def scan_folder(
     jobs: int | None = None,
 ) -> ScanResult:
     root = root.expanduser().resolve()
-    paths, walk_errors = discover_pptx_paths(root, depth)
+    paths, walk_errors = discover_document_paths(root, depth)
     if not paths:
         return ScanResult(root=root, documents=(), errors=walk_errors)
 
@@ -88,7 +115,7 @@ def scan_folder(
     errors: list[ScanError] = list(walk_errors)
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = {executor.submit(parse_pptx, path): path for path in paths}
+        futures = {executor.submit(parse_document, path): path for path in paths}
         for future in as_completed(futures):
             path = futures[future]
             try:
@@ -101,4 +128,3 @@ def scan_folder(
         documents=tuple(sorted(documents, key=lambda document: str(document.path).casefold())),
         errors=tuple(sorted(errors, key=lambda error: str(error.path).casefold())),
     )
-

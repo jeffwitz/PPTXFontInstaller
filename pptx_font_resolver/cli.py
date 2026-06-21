@@ -13,13 +13,13 @@ from .fontist_backend import FontistBackend, FontistInstallResult, output_mentio
 from .report import to_csv, to_json, to_markdown, write_report
 from .scanner import default_jobs
 
-app = typer.Typer(help="Scan PPTX files and diagnose missing Linux fonts.")
+app = typer.Typer(help="Scan Office PPTX/DOCX files and diagnose missing Linux fonts.")
 console = Console()
 
 
 @app.command()
 def scan(
-    folder: Annotated[Path, typer.Argument(help="Folder or PPTX file to scan.")],
+    folder: Annotated[Path, typer.Argument(help="Folder, PPTX file, or DOCX file to scan.")],
     depth: Annotated[str, typer.Option(help="Depth integer or 'infinite'.")] = "infinite",
     jobs: Annotated[int, typer.Option(help="Parallel workers.")] = default_jobs(),
     format: Annotated[str, typer.Option(help="table or json.")] = "table",
@@ -33,15 +33,15 @@ def scan(
     embedded_count = sum(
         1 for document in analysis.scan.documents if document.embedded_font_entries
     )
-    console.print(f"PPTX analysés : {analysis.documents_scanned}")
+    console.print(f"Documents analysés : {analysis.documents_scanned}")
     console.print(f"Polices uniques : {analysis.unique_fonts}")
-    console.print(f"PPTX invalides : {analysis.invalid_documents}")
+    console.print(f"Documents invalides : {analysis.invalid_documents}")
     console.print(f"Polices embarquées détectées : {embedded_count}")
 
 
 @app.command()
 def fonts(
-    folder: Annotated[Path, typer.Argument(help="Folder or PPTX file to scan.")],
+    folder: Annotated[Path, typer.Argument(help="Folder, PPTX file, or DOCX file to scan.")],
     depth: Annotated[str, typer.Option(help="Depth integer or 'infinite'.")] = "infinite",
     jobs: Annotated[int, typer.Option(help="Parallel workers.")] = default_jobs(),
     format: Annotated[str, typer.Option(help="table, json, or csv.")] = "table",
@@ -74,7 +74,7 @@ def fonts(
 
 @app.command()
 def report(
-    folder: Annotated[Path, typer.Argument(help="Folder or PPTX file to scan.")],
+    folder: Annotated[Path, typer.Argument(help="Folder, PPTX file, or DOCX file to scan.")],
     depth: Annotated[str, typer.Option(help="Depth integer or 'infinite'.")] = "infinite",
     jobs: Annotated[int, typer.Option(help="Parallel workers.")] = default_jobs(),
     format: Annotated[str, typer.Option(help="json, csv, or markdown.")] = "json",
@@ -119,7 +119,7 @@ def install_font(
 
 @app.command("install-missing")
 def install_missing(
-    folder: Annotated[Path, typer.Argument(help="Folder or PPTX file to scan.")],
+    folder: Annotated[Path, typer.Argument(help="Folder, PPTX file, or DOCX file to scan.")],
     depth: Annotated[str, typer.Option(help="Depth integer or 'infinite'.")] = "infinite",
     jobs: Annotated[int, typer.Option(help="Parallel workers.")] = default_jobs(),
     ask: Annotated[

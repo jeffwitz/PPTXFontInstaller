@@ -11,6 +11,7 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
 - Initial Python package scaffold.
 - CLI commands for scanning, font listing, and report generation.
 - PPTX ZIP parser with theme placeholder resolution.
+- DOCX ZIP parser for Word run fonts, styles, headers, footers, notes, comments, and theme fonts.
 - Fontconfig diagnostics and metric-compatible fallback hints.
 - Fontist backend wrapper that requires explicit license acceptance.
 - GitHub Actions CI, issue templates, and pull request template.
@@ -19,6 +20,7 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
 - install-missing now defaults to accepting licenses for explicitly selected
   fonts and uses Yes / All / No prompts.
 - Optional PySide6 GUI for folder scanning and report export.
+- Mixed PPTX/DOCX folder scanning with document type counts in JSON reports.
 
 ### Changed
 

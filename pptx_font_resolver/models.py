@@ -38,6 +38,7 @@ class PresentationFonts:
     occurrences: tuple[FontOccurrence, ...]
     raw_fonts: tuple[str, ...]
     resolved_fonts: tuple[str, ...]
+    document_type: str = "pptx"
     theme_fonts: ThemeFonts = field(default_factory=ThemeFonts)
     embedded_font_entries: tuple[str, ...] = ()
 

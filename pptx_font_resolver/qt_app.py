@@ -38,8 +38,8 @@ def summary_text(analysis: AnalysisResult) -> str:
     high_risk = sum(1 for font in analysis.fonts if font.risk_level == "high")
     missing = len(analysis.missing_fonts)
     return (
-        f"PPTX analysed: {analysis.documents_scanned}\n"
-        f"Invalid PPTX: {analysis.invalid_documents}\n"
+        f"Documents analysed: {analysis.documents_scanned}\n"
+        f"Invalid documents: {analysis.invalid_documents}\n"
         f"Unique fonts: {analysis.unique_fonts}\n"
         f"Missing exact fonts: {missing}\n"
         f"High-risk substitutions: {high_risk}"
@@ -137,10 +137,10 @@ def build_main_window(qt: dict[str, Any]):
 
         def run(self) -> None:
             try:
-                self.progress.emit(f"Discovering PPTX files under {self.folder}...")
+                self.progress.emit(f"Discovering Office documents under {self.folder}...")
                 scan = scan_folder(self.folder, depth=self.depth, jobs=self.jobs)
                 self.progress.emit(
-                    f"Analysed {len(scan.documents)} PPTX; checking Fontconfig..."
+                    f"Analysed {len(scan.documents)} documents; checking Fontconfig..."
                 )
                 fonts = build_font_report(scan, use_fontconfig=True)
                 self.progress.emit(f"Built font report with {len(fonts)} unique fonts.")
@@ -209,7 +209,7 @@ def build_main_window(qt: dict[str, Any]):
 
         def __init__(self) -> None:
             super().__init__()
-            self.setWindowTitle("PPTX Font Resolver")
+            self.setWindowTitle("Office Font Resolver")
             self.resize(1100, 720)
             self.analysis: AnalysisResult | None = None
             self.worker: ScanWorker | None = None
@@ -219,7 +219,7 @@ def build_main_window(qt: dict[str, Any]):
             self.pending_install_summary: str | None = None
 
             self.path_edit = QLineEdit()
-            self.path_edit.setPlaceholderText("Folder containing PPTX files")
+            self.path_edit.setPlaceholderText("Folder containing PPTX or DOCX files")
             self.browse_button = QPushButton("Browse")
             self.depth_edit = QLineEdit("infinite")
             self.depth_edit.setMaximumWidth(110)

@@ -115,7 +115,7 @@ def classify_risk(
             return "low", status.detection_note
         return "none", "exact family installed"
     if has_embedded_font:
-        return "medium", "font is embedded in at least one PPTX but not installed locally"
+        return "medium", "font is embedded in at least one document but not installed locally"
     if is_symbol_font(family):
         return "high", "symbol font substituted; icons or bullets may render incorrectly"
     if status is not None and is_cjk_family(family) and _is_latin_match(status):

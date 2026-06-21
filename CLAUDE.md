@@ -4,8 +4,8 @@ This file is a handoff note for continuing work on `pptx-font-resolver`.
 
 ## Project summary
 
-`pptx-font-resolver` is a Python tool that scans PowerPoint `.pptx` files on
-Linux, extracts the fonts used by presentations, checks whether exact fonts are
+`pptx-font-resolver` is a Python tool that scans PowerPoint `.pptx` and Word `.docx` files on
+Linux, extracts the fonts used by Office documents, checks whether exact fonts are
 available through Fontconfig, and reports risky substitutions.
 
 The codebase currently has two user surfaces:
@@ -19,12 +19,12 @@ The GUI and CLI share the same analysis core.
 
 - Project scaffold with packaging, tests, Ruff, README, changelog, license, and
   GitHub community files.
-- Recursive PPTX discovery with bounded or infinite depth.
-- PPTX parsing through ZIP/XML reads without extracting archives to disk.
+- Recursive PPTX/DOCX discovery with bounded or infinite depth.
+- PPTX and DOCX parsing through ZIP/XML reads without extracting archives to disk.
 - Typeface extraction from PowerPoint XML.
-- Theme placeholder resolution for common PowerPoint font placeholders:
-  `+mn-lt`, `+mj-lt`, `+mn-ea`, `+mj-ea`, `+mn-cs`, and `+mj-cs`.
-- Embedded font detection through `ppt/fonts/*`.
+- Word `w:rFonts` extraction from document, styles, numbering, headers, footers, notes, comments, charts, and drawings.
+- Theme placeholder resolution for PowerPoint placeholders and Word theme fonts.
+- Embedded font detection through `ppt/fonts/*` and `word/fonts/*`.
 - Font aggregation by family, occurrence count, source files, and embedded
   presence.
 - Fontconfig checks for exact installation and substitution family.
@@ -77,8 +77,9 @@ Fontist installs are scoped to the user location by default.
 - `pptx_font_resolver/cli.py`: Typer CLI commands and install prompts.
 - `pptx_font_resolver/qt_app.py`: PySide6 GUI and GUI workers.
 - `pptx_font_resolver/fontist_backend.py`: Fontist command wrapper.
-- `pptx_font_resolver/scanner.py`: PPTX discovery and parsing orchestration.
-- `pptx_font_resolver/parser.py`: PPTX ZIP/XML font extraction.
+- `pptx_font_resolver/scanner.py`: PPTX/DOCX discovery and parsing orchestration.
+- `pptx_font_resolver/pptx_parser.py`: PPTX ZIP/XML font extraction.
+- `pptx_font_resolver/docx_parser.py`: DOCX ZIP/XML font extraction.
 - `pptx_font_resolver/resolver.py`: Fontconfig checks and risk classification.
 - `pptx_font_resolver/analysis.py`: shared scan/report analysis entry point.
 - `tests/`: focused unit tests for parser, resolver, CLI install behavior,
@@ -116,7 +117,7 @@ rtk env QT_QPA_PLATFORM=offscreen .venv/bin/python -c '...'
 
 ## Recent verification
 
-After adding GUI font-install checkboxes and the `Yes | All | No` popup, the
+After adding DOCX support and mixed Office document scanning, the
 following checks passed:
 
 - `rtk .venv/bin/python -m ruff check .`
@@ -124,11 +125,7 @@ following checks passed:
 - `rtk .venv/bin/python -m compileall pptx_font_resolver tests`
 - `rtk env QT_QPA_PLATFORM=offscreen .venv/bin/python -c '...'`
 
-The latest pushed commit at the time of this note was:
-
-```text
-ec4fda0 Add Qt font install selection
-```
+The current note describes the DOCX-support work in this branch; check `git log -1 --oneline` for the exact commit.
 
 ## Suggested next work
 
@@ -143,11 +140,11 @@ ec4fda0 Add Qt font install selection
 - Add cancellation support for long scans and long Fontist install batches.
 - Add a settings control for install location if user-level Fontist installs are
   not enough in some workflows.
-- Add integration fixtures with real-world PPTX edge cases:
-  - Symbol / Wingdings / Webdings decks
+- Add integration fixtures with real-world Office edge cases:
+  - Symbol / Wingdings / Webdings decks and documents
   - Microsoft Office cloud fonts
-  - CJK presentations
-  - presentations with embedded fonts
+  - CJK presentations and Word documents
+  - documents with embedded fonts
   - unreadable directories in recursive scans
 - Document a reproducible Linux setup for Fontist, Fontconfig, and Microsoft
   core fonts where licensing permits it.

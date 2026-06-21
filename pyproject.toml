@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pptx-font-resolver"
 version = "0.1.0"
-description = "Scan PPTX files and diagnose missing Linux fonts."
+description = "Scan PPTX/DOCX files and diagnose missing Linux fonts."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

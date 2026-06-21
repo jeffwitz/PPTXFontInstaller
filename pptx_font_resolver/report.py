@@ -14,6 +14,7 @@ def scan_to_dict(scan_result: ScanResult, fonts: tuple[FontSummary, ...]) -> dic
     return {
         "root": str(scan_result.root),
         "documents_scanned": len(scan_result.documents),
+        "document_types": _document_type_counts(scan_result),
         "invalid_documents": [
             {"path": str(error.path), "message": error.message} for error in scan_result.errors
         ],
@@ -84,10 +85,10 @@ def to_csv(fonts: tuple[FontSummary, ...]) -> str:
 
 def to_markdown(scan_result: ScanResult, fonts: tuple[FontSummary, ...]) -> str:
     lines = [
-        "# PPTX font report",
+        "# Office font report",
         "",
-        f"- PPTX analysed: {len(scan_result.documents)}",
-        f"- Invalid PPTX: {len(scan_result.errors)}",
+        f"- Documents analysed: {len(scan_result.documents)}",
+        f"- Invalid documents: {len(scan_result.errors)}",
         f"- Unique fonts: {len(fonts)}",
         "",
         "| Font | Risk | Exact installed | Fontconfig match | Occurrences | "
@@ -103,6 +104,13 @@ def to_markdown(scan_result: ScanResult, fonts: tuple[FontSummary, ...]) -> str:
             f"{font.occurrences} | {len(font.files)} | {font.recommendation} |"
         )
     return "\n".join(lines) + "\n"
+
+
+def _document_type_counts(scan_result: ScanResult) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for document in scan_result.documents:
+        counts[document.document_type] = counts.get(document.document_type, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def write_report(path: Path, content: str) -> None:

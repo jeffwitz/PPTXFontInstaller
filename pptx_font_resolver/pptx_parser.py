@@ -61,6 +61,7 @@ def parse_pptx(path: Path) -> PresentationFonts:
         occurrences=tuple(occurrences),
         raw_fonts=tuple(sorted(raw_fonts, key=str.casefold)),
         resolved_fonts=tuple(sorted(resolved_fonts, key=str.casefold)),
+        document_type="pptx",
         theme_fonts=theme_fonts,
         embedded_font_entries=embedded_entries,
     )

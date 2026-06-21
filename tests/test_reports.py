@@ -19,6 +19,7 @@ def test_json_report_is_frontend_consumable(tmp_path):
     payload = json.loads(to_json(scan, fonts))
 
     assert payload["documents_scanned"] == 1
+    assert payload["document_types"] == {"pptx": 1}
     assert payload["fonts"][0]["family"] == "Calibri"
     assert payload["fonts"][0]["metric_fallbacks"] == ["Carlito"]
     assert payload["fonts"][0]["risk_level"] == "medium"

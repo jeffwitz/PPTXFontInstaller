@@ -4,13 +4,21 @@ import zipfile
 from pathlib import Path
 
 
-def make_pptx(path: Path, entries: dict[str, bytes | str]) -> Path:
+def make_ooxml(path: Path, entries: dict[str, bytes | str]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w") as archive:
         for name, content in entries.items():
             data = content.encode("utf-8") if isinstance(content, str) else content
             archive.writestr(name, data)
     return path
+
+
+def make_pptx(path: Path, entries: dict[str, bytes | str]) -> Path:
+    return make_ooxml(path, entries)
+
+
+def make_docx(path: Path, entries: dict[str, bytes | str]) -> Path:
+    return make_ooxml(path, entries)
 
 
 def slide_xml(*families: str) -> str:
@@ -43,3 +51,25 @@ def theme_xml(minor_latin: str = "Aptos", major_latin: str = "Aptos Display") ->
 </a:theme>
 """
 
+
+
+def document_xml(*families: str) -> str:
+    attrs = "".join(
+        f'<w:r><w:rPr><w:rFonts w:ascii="{family}" w:hAnsi="{family}"/></w:rPr><w:t>x</w:t></w:r>'
+        for family in families
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body><w:p>{attrs}</w:p></w:body>
+</w:document>
+"""
+
+
+def document_theme_xml(theme_value: str = "minorHAnsi") -> str:
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:rPr><w:rFonts w:asciiTheme="{theme_value}"/></w:rPr><w:t>x</w:t></w:r></w:p>
+  </w:body>
+</w:document>
+"""
