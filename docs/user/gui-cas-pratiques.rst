@@ -1,324 +1,177 @@
-Cas pratiques avec l'interface GUI
-==================================
+GUI Practical Cases
+====================
 
-Cette page montre **comment utiliser l'interface graphique** pour résoudre des problèmes concrets de polices manquantes.
+This page demonstrates common workflows using the graphical interface.
 
 .. contents::
    :local:
 
-Cas 1 : Installer toutes les polices manquantes via Google Fonts
----------------------------------------------------------------
-
-**Scénario** : Vous avez 15 polices manquantes, toutes disponibles via Google Fonts.
-
-**Étapes** :
-
-1. Lancez l'interface :
-   
-   .. code-block:: bash
-   
-      pptx-font-resolver-gui
-
-2. Cliquez sur **Choisir un dossier** et sélectionnez votre dossier de documents
-
-3. Cochez **Filtrer aux polices manquantes** (en haut à droite)
-
-4. Passez à l'onglet **Résolution**
-
-5. Cliquez sur **Installer via Google Fonts** (bouton en haut)
-
-6. Une popup apparaît avec une liste de polices et des boutons :
-   
-   - **Oui** : Installer cette police
-   - **Oui pour toutes** : Installer toutes les polices de la liste
-   - **Non** : Ignorer cette police
-
-7. Cliquez sur **Oui pour toutes**
-
-8. La scan se relance automatiquement
-
-9. Les lignes des polices installées deviennent **vertes**
-
-Résultat attendu :
-
-- Toutes les polices manquantes sont installées
-- Les lignes sont vertes avec ✅ dans la colonne "Installed"
-- Un message en bas confirme le nombre de polices installées
-
-Astuce :
-- Si une police est en **rouge**, elle n'est pas disponible via Google Fonts → utilisez ``import-font`` ou ``accept-fallback``
-- Si une police est en **jaune**, l'installation a échoué → vérifiez les logs
-
-Cas 2 : Accepter un fallback pour une police symbolique
+Case 1 – Install all missing fonts via Google Fonts
 ---------------------------------------------------
 
-**Scénario** : Vous avez ``Wingdings`` dans un document et voulez éviter les boîtes ou symboles incorrects.
+**Scenario**: You have 15 missing fonts, all of which are available on Google Fonts.
 
-**Étapes** :
+**Steps**:
 
-1. Dans l'onglet **Résolution**, trouvez la ligne avec ``Wingdings``
-2. Colonne **Risk** : ⚠️ **High**
-3. Colonne **Recommended action** : ``Accept fallback``
-4. Cliquez sur **Explain** pour voir les détails
-5. Cliquez sur **Accept fallback**
-6. Une popup apparaît avec :
-   
+1. Launch the GUI:
+
+   .. code-block:: bash
+
+      pptx-font-resolver-gui
+
+2. Click **Choose folder** and select the folder containing your documents.
+3. Check **Filter to missing fonts** to hide the already‑installed fonts.
+4. Switch to the **Resolution** tab.
+5. Click **Install via Google Fonts** (top‑right button).
+6. A popup lists the fonts to be installed with three buttons:
+
+   - **Yes** – install this font immediately
+   - **Yes for all** – install every listed font
+   - **No** – skip this font
+
+7. Click **Yes for all**.
+8. The scan restarts automatically; rows for installed fonts turn **green**.
+
+**Expected result**:
+
+- All missing fonts are now installed.
+- Rows are green with a ✓ in the **Installed** column.
+- A status bar confirms the number of fonts installed.
+
+Tip: If a font appears **red**, it is not available via Google Fonts – consider using ``Import font file`` or ``Accept fallback``.
+
+Case 2 – Accept a fallback for a symbol font
+-------------------------------------------
+
+**Scenario**: A presentation uses ``Wingdings``. You prefer to map it to an open‑source symbol font.
+
+**Steps**:
+
+1. In the **Resolution** tab locate the row with ``Wingdings``.
+2. Column **Risk** shows **High**.
+3. Column **Recommended action** shows ``Accept fallback``.
+4. Click **Explain** to view details.
+5. Click **Accept fallback**.
+6. A confirmation dialog appears:
+
    .. code-block:: text
-   
-      Créer un alias Fontconfig :
+
+      Create a Fontconfig alias:
       Wingdings → Noto Sans Symbols
       
-      ⚠️ Attention : Cette substitution peut changer le sens des glyphes.
-      Voulez-vous continuer ?
-      
-      [Oui] [Non]
+      ⚠️ This substitution may change the meaning of glyphs.
+      Continue?
 
-7. Cliquez sur **Oui**
+   Choose **Yes**.
+7. The row becomes **green** and the details panel shows the generated alias file.
 
-8. La ligne devient **verte** et affiche :
-   
+**Result**:
+
+- LibreOffice renders the document using ``Noto Sans Symbols``.
+- The original family name (``Wingdings``) stays unchanged in the PPTX file.
+
+Case 3 – Install a specific font via Fontist
+--------------------------------------------
+
+**Scenario**: You want to install ``Aptos`` from Fontist.
+
+**Steps**:
+
+1. In the **Resolution** tab find the row for ``Aptos``.
+2. Column **Fontist** shows a green check.
+3. Column **Recommended action** reads ``Install via Fontist``.
+4. Click **Install via Fontist**.
+5. A popup asks for license acceptance:
+
    .. code-block:: text
-   
-      Alias créé : Wingdings → Noto Sans Symbols
-      Fichier : ~/.config/fontconfig/conf.d/90-pptx-font-resolver.conf
 
-9. Vérifiez dans le panneau de détails :
-   
-   .. code-block:: text
-   
-      Alias Fontconfig : Wingdings → Noto Sans Symbols
-
-10. Rafraîchissez LibreOffice pour voir le rendu
-
-Résultat attendu :
-
-- Les symboles ``Wingdings`` sont rendus avec ``Noto Sans Symbols``
-- Le document PowerPoint n'est pas modifié
-- La règle est persistante (reste après redémarrage)
-
-Cas 3 : Installer une police spécifique via Fontist
------------------------------------------------
-
-**Scénario** : Vous voulez installer ``Aptos`` via Fontist (si disponible).
-
-
-**Étapes** :
-
-1. Dans l'onglet **Résolution**, trouvez la ligne avec ``Aptos``
-2. Colonne **Fontist** : ✅ **Available**
-3. Colonne **Recommended action** : ``Install via Fontist``
-4. Cliquez sur **Install via Fontist**
-5. Une popup apparaît avec :
-   
-   .. code-block:: text
-   
-      Installer Aptos via Fontist ?
+      Install Aptos via Fontist?
       
-      ⚠️ Licence : Apache 2.0
-      Voulez-vous accepter la licence et installer ?
-      
-      [Oui] [Non]
+      ⚠️ License: Apache 2.0
+      Accept license and install?
 
-6. Cliquez sur **Oui**
-7. L'installation se lance en arrière-plan
-8. Une notification apparaît : "Aptos installé avec succès"
-9. La ligne devient **verte** avec ✅ dans la colonne "Installed"
+   Click **Yes**.
+6. Installation runs in the background; a notification appears when finished.
+7. The row turns **green** with a ✓ in the **Installed** column.
 
-Résultat attendu :
-
-- ``Aptos`` est installé dans ``~/.local/share/fonts/``
-- ``fc-match "Aptos"`` retourne ``Aptos``
-- La police est disponible pour tous les logiciels (LibreOffice, OnlyOffice, etc.)
-
-Cas 4 : Exporter un rapport pour un collègue
-------------------------------------------
-
-**Scénario** : Vous voulez partager un rapport de scan avec votre équipe.
-
-**Étapes** :
-
-1. Cliquez sur l'onglet **Scan** ou **Résolution**
-2. Cliquez sur **Exporter** (bouton en haut à droite)
-3. Choisissez le format : JSON, CSV ou Markdown
-4. Choisissez un emplacement pour sauvegarder le fichier
-5. Envoyez le fichier à votre collègue
-
-Exemple de rapport Markdown exporté :
-
-.. code-block:: markdown
-
-   # Rapport de résolution - 24/06/2026
-
-   ## Résumé
-   - Dossier : ~/Documents/Présentations
-   - Polices manquantes : 12
-   - Polices installées : 8
-
-   ## Détails
-
-   | Family         | Installed | Fontist | Recommended action | Relation      |
-   |----------------|-----------|---------|-------------------|---------------|
-   | Calibri        | ❌       | ✅      | Install via Fontist | exact         |
-   | Aptos          | ❌       | ❌      | Install via Google Fonts | visual      |
-   | Futura PT Bold  | ❌       | ❌      | Accept fallback    | visual        |
-
-   ## Actions recommandées
-   - Installer Calibri via Fontist
-   - Installer Aptos via Google Fonts
-   - Accepter le fallback pour Futura PT Bold
-
-Cas 5 : Ignorer une police temporairement
+Case 4 – Export a report for a colleague
 ---------------------------------------
 
-**Scénario** : Vous avez une police ``LegacySans-Bold`` qui est en rouge (non disponible) mais vous ne voulez pas la traiter maintenant.
+**Scenario**: You need to share a font‑status report with a teammate.
 
-**Étapes** :
+**Steps**:
 
-1. Dans l'onglet **Résolution**, trouvez la ligne avec ``LegacySans-Bold``
-2. Colonne **Recommended action** : ``Ignore``
-3. Cliquez sur **Ignore**
-4. La ligne devient **grise** et reste visible
+1. Switch to either the **Scan** or **Resolution** tab.
+2. Click **Export** (top‑right).
+3. Choose the export format: JSON, CSV or Markdown.
+4. Select a destination path and click **Save**.
 
-Résultat attendu :
+The exported file contains the same table you see in the GUI, ready to be emailed or version‑controlled.
 
-- La ligne est masquée dans la session en cours
-- Elle réapparaît si vous relancez le scan
-- Contrairement à ``accept-fallback``, elle n'est pas persistante
+Case 5 – Ignore a font temporarily (session‑only)
+------------------------------------------------
 
-Cas 6 : Importer une police utilisateur
--------------------------------------
+**Scenario**: A missing font is not critical for now and you want to hide it.
 
-**Scénario** : Vous avez ``~/Downloads/FuturaPT.ttf`` et le droit de l'utiliser.
+**Steps**:
 
-**Étapes** :
+1. In the **Resolution** tab locate the unwanted font.
+2. Click **Ignore**.
+3. The row turns **gray** and is excluded from further actions.
 
-1. Cliquez sur l'onglet **Résolution**
-2. Cliquez sur **Import font file** (bouton en haut)
-3. Une fenêtre de fichier s'ouvre → sélectionnez ``~/Downloads/FuturaPT.ttf``
-4. Choisissez **Copier** ou **Créer un lien symbolique**
-5. Cliquez sur **Importer**
-6. Une notification apparaît : "FuturaPT importée avec succès"
-7. Rafraîchissez le scan (bouton **Re-scan**)
-8. La ligne devient **verte** avec ✅ dans la colonne "Installed"
+**Note**: Ignored fonts are only hidden for the current session; they reappear after a new scan.
 
-Résultat attendu :
+Case 6 – Import a user‑provided font file
+----------------------------------------
 
-- ``FuturaPT`` est installé dans ``~/.local/share/fonts/pptx-font-installer/imported/``
-- ``fc-match "Futura PT Bold"`` retourne ``FuturaPT``
-- La police est disponible pour tous les logiciels
+**Scenario**: You have a legally owned ``FuturaPT.ttf`` file you want to use.
 
-Cas 7 : Résoudre une police CJK
---------------------------------
+**Steps**:
 
-**Scénario** : Vous avez ``Noto Sans CJK SC Regular`` qui est substitué par ``Noto Sans`` (risque élevé).
+1. Click **Import font file** (top‑right button).
+2. A file dialog opens – select ``~/Downloads/FuturaPT.ttf``.
+3. Choose **Copy** or **Symlink**.
+4. Click **Import**.
+5. A notification confirms successful import.
+6. Re‑scan the folder; the imported font now appears as **installed**.
 
+Case 7 – Resolve a CJK font issue
+---------------------------------
 
-**Étapes** :
+**Scenario**: ``Noto Sans CJK SC Regular`` is substituted by ``Noto Sans`` (high risk).
 
-1. Dans l'onglet **Résolution**, trouvez la ligne avec ``Noto Sans CJK SC Regular``
-2. Colonne **Risk** : ⚠️ **High** (CJK → Latin)
-3. Colonne **Recommended action** : ``Install system package`` ou ``Import font file``
-4. Cliquez sur **Explain** pour voir les détails
-5. Installez la police CJK exacte via le gestionnaire de paquets :
-   
+**Steps**:
+
+1. Find the row for ``Noto Sans CJK SC Regular``.
+2. Column **Risk** shows **High**.
+3. Column **Recommended action** suggests ``Install system package`` or ``Import font file``.
+4. Click **Explain** for details.
+5. Install the CJK package via the terminal:
+
    .. code-block:: bash
-   
+
       sudo apt install fonts-noto-cjk
-   
-6. Ou importez la police si vous avez le fichier ``.ttf``
-7. Rafraîchissez le scan
-8. La ligne devient **verte**
 
-Résultat attendu :
+6. Re‑scan the folder – the row becomes **green** and the substitution disappears.
 
-- Les caractères CJK sont correctement rendus
-- Pas de perte de données
+Case 8 – Run the GUI in off‑screen mode (CI)
+--------------------------------------------
 
-Cas 8 : Utiliser l'interface en mode offscreen (CI/CD)
-------------------------------------------------------
+**Scenario**: You need to verify that the GUI starts without a display (e.g., in a CI pipeline).
 
-**Scénario** : Vous voulez tester l'interface sans interface graphique (pour des tests automatisés).
-
-**Commande** :
+**Command**:
 
 .. code-block:: bash
 
-   env QT_QPA_PLATFORM=offscreen \
-       pptx-font-resolver-gui
+   env QT_QPA_PLATFORM=offscreen pptx-font-resolver-gui
 
-Résultat attendu :
+The application creates a hidden window, runs the initialization code and exits with status 0.
 
-- L'interface se lance en arrière-plan
-- ``window.windowTitle()`` retourne le titre de la fenêtre
-- La fenêtre est fermée automatiquement
-- Code de sortie : 0 (succès)
+See also
+--------
 
-Boutons et actions par onglet
------------------------------
+- :doc:`gui` – Full description of the GUI layout and actions.
+- :doc:`fallbacks` – Explanation of Fontconfig fallbacks.
+- :doc:`resolve-workflow` – End‑to‑end resolution process.
+- :doc:`troubleshooting` – Common problems and solutions.
 
-Onglet **Scan**
-~~~~~~~~~~~~
-
-+---------------------+--------------------------------------------------+
-| Élément             | Action                                         |
-+=====================+==================================================+
-| Dossier             | Sélectionner un dossier à scanner                |
-+---------------------+--------------------------------------------------+
-| Profondeur          | Choisir une profondeur (1, 2, infinite)         |
-+---------------------+--------------------------------------------------+
-| Nombre de jobs      | Choisir le nombre de workers parallèles          |
-+---------------------+--------------------------------------------------+
-| Filtrer aux manquantes | Cocher pour afficher uniquement les polices manquantes |
-+---------------------+--------------------------------------------------+
-| Lancer le scan      | Bouton **Scan**                                |
-+---------------------+--------------------------------------------------+
-| Arrêter le scan     | Bouton **Stop** (si le scan est en cours)      |
-+---------------------+--------------------------------------------------+
-| Exporter            | Bouton **Exporter** (JSON, CSV, Markdown)       |
-+---------------------+--------------------------------------------------+
-
-Onglet **Résolution**
-~~~~~~~~~~~~~~~~~~
-
-+---------------------+--------------------------------------------------+
-| Élément             | Action                                         |
-+=====================+==================================================+
-| Installer via Fontist | Bouton **Install via Fontist** (par ligne)     |
-+---------------------+--------------------------------------------------+
-| Installer via Google Fonts | Bouton **Install via Google Fonts** (par ligne) |
-+---------------------+--------------------------------------------------+
-| Installer système   | Bouton **Install system package** (par ligne)    |
-+---------------------+--------------------------------------------------+
-| Installer recommandations | Bouton **Install safe recommendations** (toutes) |
-+---------------------+--------------------------------------------------+
-| Importer une police | Bouton **Import font file** (par ligne)         |
-+---------------------+--------------------------------------------------+
-| Accepter fallback   | Bouton **Accept fallback** (par ligne)          |
-+---------------------+--------------------------------------------------+
-| Ignorer             | Bouton **Ignore** (par ligne)                   |
-+---------------------+--------------------------------------------------+
-| Exporter            | Bouton **Exporter** (JSON, CSV, Markdown)       |
-+---------------------+--------------------------------------------------+
-
-Astuces
--------
-
-- **Double-cliquez** sur une ligne pour voir les détails dans le panneau de droite
-- **Tri par colonne** : Cliquez sur l'en-tête d'une colonne pour trier
-- **Recherche** : Utilisez la barre de recherche en haut à droite
-- **Rafraîchir** : Bouton **Re-scan** pour relancer une analyse après installation
-
-Résumé des couleurs
-------------------
-
-+--------+-------------------------------+-------------------------------+
-| Couleur | Signification                 | Action recommandée             |
-+========+===============================+===============================+
-| Vert   | Police installée ou fallback créé | Aucune                       |
-+--------+-------------------------------+-------------------------------+
-| Rouge  | Police non disponible via Fontist | Utilisez ``import-font`` ou ``accept-fallback`` |
-+--------+-------------------------------+-------------------------------+
-| Jaune  | Installation échouée           | Vérifiez les logs            |
-+--------+-------------------------------+-------------------------------+
-| Gris   | Ignorée (session-only)         | Cliquez sur **Ignore** pour la réactiver |
-+--------+-------------------------------+-------------------------------+

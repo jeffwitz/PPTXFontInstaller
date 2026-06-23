@@ -1,7 +1,7 @@
-Glossaire
+Glossary
 ========
 
-Ce glossaire explique les termes techniques utilisés dans la documentation et l'interface.
+Definitions of the technical terms used throughout the documentation and the application.
 
 .. contents::
    :local:
@@ -9,141 +9,123 @@ Ce glossaire explique les termes techniques utilisés dans la documentation et l
 .. glossary::
 
    metric-compatible
-      Une police qui a des **métriques similaires** (largeur des caractères, espacement, hauteur de ligne) à la police originale.
-      
-      *Pourquoi ?* → Moins de changements de mise en page lors de la substitution.
-      
-      *Exemple* : Carlito pour Calibri, Caladea pour Cambria.
-      
-      *Relation* : ``metric-compatible`` dans les rapports de résolution.
+      A font whose **metrics** (character width, spacing, line height) are similar to the original font.
+
+      *Why?* → Fewer layout changes when substituting.
+      *Example*: Carlito for Calibri, Caladea for Cambria.
+      *Relation*: ``metric‑compatible`` appears in resolution reports.
 
    visual fallback
-      Une police qui a une **apparence visuelle similaire** mais des métriques différentes.
-      
-      *Pourquoi ?* → Alternative open-source quand la police exacte n'est pas disponible.
-      
-      *Risque* : Peut changer les sauts de ligne et la pagination.
-      
-      *Exemple* : Montserrat pour Futura PT Bold.
+      A font that looks visually similar but has different metrics.
+
+      *Why?* → Open‑source alternative when the exact font is unavailable.
+      *Risk*: May alter line breaks and pagination.
+      *Example*: Montserrat for Futura PT Bold.
 
    Fontconfig alias
-      Une règle locale qui mappe une famille de police à une autre au niveau du système Linux.
-      
-      *Où ?* Dans ``~/.config/fontconfig/conf.d/90-pptx-font-resolver.conf``.
-      
-      *Exemple* :
-      
-      .. code-block:: xml
-      
+      A local rule that maps one font family to another at the system level.
+
+      *Location*: ``~/.config/fontconfig/conf.d/90-pptx-font-resolver.conf``.
+      *Example*::
+
          <alias>
            <family>Futura PT Bold</family>
            <prefer>
              <family>Montserrat</family>
            </prefer>
          </alias>
-      
-      *Commande* : ``pptx-font-resolver accept-fallback "Futura PT Bold" "Montserrat"``
+
+      *Command*: ``pptx-font-resolver accept-fallback "Futura PT Bold" "Montserrat"``
 
    OOXML
-      Office Open XML, le format des fichiers ``.pptx`` et ``.docx``.
-      
-      *Structure* : ZIP contenant des fichiers XML (ex: ``/ppt/slides/slide1.xml``).
-      
-      *Pourquoi ?* → Permet de scanner les polices sans extraire l'archive sur disque.
+      Office Open XML – the file format for ``.pptx`` and ``.docx`` files.
+
+      *Structure*: A ZIP archive containing XML files (e.g. ``/ppt/slides/slide1.xml``).
+      *Why?* → Allows scanning fonts without extracting the archive to disk.
 
    Fontist
-      Outil en ligne de commande pour installer des polices TrueType (``.ttf``) depuis des sources open-source.
-      
-      *Utilisation* : ``pptx-font-resolver install-font "Aptos" --accept-license``
-      
-      *Limite* : Certains polices propriétaires ne sont pas disponibles.
+      Command‑line tool that installs TrueType fonts (``.ttf``) from open‑source sources.
+
+      *Usage*: ``pptx-font-resolver install-font "Aptos" --accept-license``
+      *Limitation*: Proprietary fonts are often not available.
 
    Fontconfig
-      Système de gestion des polices sous Linux qui permet de :
-      
-      - Détecter les polices installées
-      - Gérer les substitutions (ex: Arial → Liberation Sans)
-      - Configurer des alias locaux
-      
-      *Commandes utiles* :
-      
-      .. code-block:: bash
-      
-         fc-list | grep "Montserrat"        # Lister les polices
-         fc-match "Futura PT Bold"          # Vérifier une substitution
-         fc-cache -f                      # Rafraîchir le cache
+      Linux font management system that can:
 
-   Embedded font / Police embarquée
-      Une police incluse directement dans le fichier ``.pptx`` ou ``.docx``.
-      
-      *Détection* : ``pptx-font-resolver fonts ./documents --show-files``
-      
-      *Avantage* : Pas besoin d'installer la police sur le système.
-      
-      *Limite* : Certaines applications (LibreOffice) ne l'utilisent pas par défaut.
+      - Detect installed fonts
+      - Provide substitution rules (e.g. Arial → Liberation Sans)
+      - Store local aliases
 
-   Substitution / Fallback
-      Quand une police demandée n'est pas disponible, Fontconfig en choisit une autre.
-      
-      *Types* :
-      
-      - **Exact** : Même famille, même style (ex: Arial → Arial)
-      - **Metric-compatible** : Métriques similaires (ex: Carlito → Calibri)
-      - **Visual** : Apparence similaire mais métriques différentes (ex: Montserrat → Futura PT)
-      - **Generic** : Remplacement générique (ex: sans-serif → DejaVu Sans)
-      - **Unsafe** : Risque élevé (ex: symbol fonts comme Wingdings)
+      *Useful commands*::
 
-   Risk classification / Classification des risques
-      Niveau de dangerosité d'une substitution de police :
-      
-      - **Low** : Exact ou metric-compatible
-      - **Medium** : Visual fallback
-      - **High** : Substitution dangereuse (symbol fonts, CJK → Latin)
-      
-      *Où ?* Dans les rapports de scan et de résolution.
+         fc-list | grep "Montserrat"   # list fonts
+         fc-match "Futura PT Bold"     # test substitution
+         fc-cache -f                    # refresh cache
 
-   Dry-run
-      Mode de test qui montre ce qui serait fait **sans exécuter** les actions.
-      
-      *Exemple* : ``pptx-font-resolver install-missing ./documents --provider google --dry-run``
-      
-      *Utilité* : Vérifier les actions avant de les exécuter.
+   Embedded font
+      A font file that is bundled directly inside a ``.pptx`` or ``.docx`` document.
+
+      *Detection*: ``pptx-font-resolver fonts ./documents --show-files``
+      *Benefit*: No system‑wide installation required.
+      *Limitation*: Some applications (e.g. LibreOffice) may ignore embedded fonts.
+
+   Substitution / fallback
+      When the requested font is unavailable, Fontconfig chooses an alternative.
+
+      *Types*:
+
+      - **Exact** – same family and style (e.g. Arial → Arial)
+      - **Metric‑compatible** – similar metrics (e.g. Carlito → Calibri)
+      - **Visual** – similar appearance, different metrics (e.g. Montserrat → Futura PT)
+      - **Generic** – generic family fallback (e.g. sans‑serif → DejaVu Sans)
+      - **Unsafe** – high‑risk substitution (e.g. symbol fonts like Wingdings)
+
+   Risk classification
+      The danger level of a substitution:
+
+      - **Low** – exact or metric‑compatible
+      - **Medium** – visual fallback
+      - **High** – unsafe substitutions (symbol fonts, CJK → Latin)
+      - *Where shown* – in scan and resolution reports.
+
+   dry‑run
+      Test mode that shows what would be done **without executing** any actions.
+
+      *Example*: ``pptx-font-resolver install-missing ./documents --provider google --dry-run``
+      *Purpose*: Verify actions before performing them.
 
    GUI
-      Interface graphique Qt (PySide6) pour scanner, résoudre et installer des polices.
-      
-      *Lancement* : ``pptx-font-resolver-gui``
-      
-      *Fonctionnalités* : Scan, résolution multi-sources, installation, export, gestion des fallbacks.
+      Qt graphical interface (PySide6) for scanning, resolving, and installing fonts.
 
-   Provider / Source de résolution
-      Source utilisée pour résoudre une police manquante :
-      
-      - ``fontist`` : Installation via Fontist
-      - ``apt`` : Installation via paquets Debian/Ubuntu
-      - ``google`` : Installation via Google Fonts
-      - ``local`` : Statut local via Fontconfig
-      - ``all`` : Combinaison de toutes les sources
-      
-      *Commande* : ``pptx-font-resolver resolve ./documents --provider google``
+      *Launch*: ``pptx-font-resolver-gui``
+      *Features*: Scan view, resolution view, install actions, export, fallback management.
 
-   Ignore (session-only)
-      Action dans l'interface GUI qui masque une police **uniquement pour la session en cours**.
-      
-      *Différence* : Contrairement à ``accept-fallback``, ``Ignore`` ne crée pas de règle persistante.
-      
-      *Utilité* : Masquer temporairement une police déjà traitée.
+   provider
+      The source used to resolve a missing font:
 
-   License acceptance / Acceptation de licence
-      Confirmation explicite requise pour installer certaines polices via Fontist.
-      
-      *Commande* : ``--accept-license`` ou confirmation GUI.
-      
-      *Pourquoi ?* → Respect des licences des polices.
+      - ``fontist`` – install via Fontist
+      - ``apt`` – install via Debian/Ubuntu packages
+      - ``google`` – install via Google Fonts
+      - ``local`` – local Fontconfig status
+      - ``all`` – combine all sources
 
-   ZIP safety guard / Garde-fou ZIP
-      Limite de taille pour éviter de scanner des archives pathologiques.
-      
-      *Seuil* : 500 Mo (524288000 octets)
-      
-      *Exemple* : ``archive uncompressed size exceeds limit: 1498762844 > 524288000``
+      *Command*: ``pptx-font-resolver resolve ./documents --provider google``
+
+   ignore (session‑only)
+      GUI action that hides a font **only for the current session**.
+
+      *Difference*: Unlike ``accept‑fallback`` it does **not** create a persistent rule.
+      *Use case*: Temporarily suppress a font you have already handled.
+
+   license acceptance
+      Explicit confirmation required to install certain fonts via Fontist.
+
+      *Command*: ``--accept-license`` (CLI) or the GUI confirmation dialog.
+      *Why?* – to respect font licensing.
+
+   ZIP safety guard
+      Size limit that prevents scanning pathological archives.
+
+      *Threshold*: 500 MiB (524 288 000 bytes)
+      *Example*: ``archive uncompressed size exceeds limit: 1498762844 > 524288000``
+

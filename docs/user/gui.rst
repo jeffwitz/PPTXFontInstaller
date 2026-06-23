@@ -1,13 +1,13 @@
 Qt GUI
 ======
 
-Lancez l'interface graphique avec :
+Launch the graphical interface with:
 
 .. code-block:: bash
 
    pptx-font-resolver-gui
 
-L'interface réutilise le même moteur d'analyse que la CLI. Elle fournit une interface visuelle pour scanner, reviewer et résoudre les problèmes de polices.
+The GUI re‑uses the same analysis engine as the CLI and provides a visual interface for scanning, reviewing and resolving font issues.
 
 .. contents::
    :local:
@@ -15,129 +15,120 @@ L'interface réutilise le même moteur d'analyse que la CLI. Elle fournit une in
 .. _gui-scan-view:
 
 Scan View
---------
+---------
 
-La vue par défaut permet de scanner un dossier et d'afficher les polices utilisées.
+The default view scans a folder and displays the fonts used.
 
-Éléments de l'interface :
+Interface elements:
 
 +---------------------+--------------------------------------------------+
-| Élément             | Description                                    |
+| Element             | Description                                      |
 +=====================+==================================================+
-| **Barre de menu**   | Fichier, Édition, Affichage, Aide              |
+| **Menu bar**        | File, Edit, View, Help                           |
 +---------------------+--------------------------------------------------+
-| **Barre d'outils** | Boutons rapides : Scan, Stop, Exporter           |
+| **Toolbar**         | Quick‑action buttons: Scan, Stop, Export         |
 +---------------------+--------------------------------------------------+
-| **Sélecteur de dossier** | Bouton pour choisir un dossier à scanner       |
+| **Folder selector** | Button to choose a folder to scan                |
 +---------------------+--------------------------------------------------+
-| **Profondeur**      | Menu déroulant (1, 2, infinite)                |
+| **Depth**           | Dropdown (1, 2, infinite)                        |
 +---------------------+--------------------------------------------------+
-| **Nombre de jobs**  | Menu déroulant (1 à 8)                         |
+| **Number of jobs**  | Dropdown (1‑8)                                   |
 +---------------------+--------------------------------------------------+
-| **Filtrer aux manquantes** | Case à cocher pour afficher uniquement les polices manquantes |
+| **Filter to missing**| Checkbox to display only missing fonts          |
 +---------------------+--------------------------------------------------+
-| **Tableau**         | Affiche les polices, leur statut, occurrences, fichiers |
+| **Table**           | Shows fonts, status, occurrences and files      |
 +---------------------+--------------------------------------------------+
-| **Panneau de détails** | Affiche les informations détaillées pour la ligne sélectionnée |
+| **Details panel**   | Shows detailed information for the selected row |
 +---------------------+--------------------------------------------------+
 
-Résultats attendus :
+Expected results:
 
-
-- **Vert** : Police installée exactement
-- **Rouge** : Police non disponible via Fontist
-- **Jaune** : Installation échouée
-- **Gris** : Ignorée (session-only)
+* **Green** – Font installed exactly
+* **Red** – Font not available via Fontist
+* **Yellow** – Installation failed
+* **Gray** – Ignored (session‑only)
 
 .. note::
-   Double-cliquez sur une ligne pour voir les détails dans le panneau de droite.
+   Double‑click a row to view its details in the right‑hand panel.
 
 .. _gui-resolution-view:
 
 Resolution View
 ---------------
 
-Passez à l'onglet **Résolution** pour voir les recommandations de résolution multi-sources.
+Switch to the **Resolution** tab to see multi‑source resolution recommendations.
 
-Colonnes affichées :
+Columns displayed:
 
 +---------------------+--------------------------------------------------+
-| Colonne             | Description                                    |
+| Column              | Description                                      |
 +=====================+==================================================+
-| **Install**         | Case à cocher pour sélectionner une police        |
+| **Install**         | Checkbox to select a font for installation       |
 +---------------------+--------------------------------------------------+
-| **Family**          | Nom de la famille de police                    |
+| **Family**          | Font family name                                 |
 +---------------------+--------------------------------------------------+
-| **Installed**       | ✅ si la police est installée exactement         |
+| **Installed**       | ✓ if the font is installed exactly               |
 +---------------------+--------------------------------------------------+
-| **Fontist**         | ✅ si la police est disponible via Fontist      |
+| **Fontist**         | ✓ if the font is available via Fontist           |
 +---------------------+--------------------------------------------------+
-| **Recommended action** | Action recommandée (Install via Fontist, Accept fallback, etc.) |
+| **Recommended action**| Action to take (Install via Fontist, Accept fallback, …) |
 +---------------------+--------------------------------------------------+
-| **Recommended family** | Famille suggérée pour substitution              |
+| **Recommended family**| Suggested replacement family                    |
 +---------------------+--------------------------------------------------+
-| **Relation**        | Type de relation (exact, metric-compatible, visual) |
+| **Relation**        | Type of relation (exact, metric‑compatible, visual) |
 +---------------------+--------------------------------------------------+
-| **Risk**           | Niveau de risque (Low, Medium, High)           |
+| **Risk**            | Risk level (Low, Medium, High)                  |
 +---------------------+--------------------------------------------------+
-| **Source**          | Source de la recommandation (fontist, google, local) |
+| **Source**          | Source of recommendation (fontist, google, local) |
 +---------------------+--------------------------------------------------+
-| **Files**           | Liste des fichiers utilisant cette police         |
+| **Files**           | List of files using this font                   |
 +---------------------+--------------------------------------------------+
 
-Actions disponibles (boutons en haut) :
+Available actions (buttons at the top):
 
 +-------------------------------------+--------------------------------------+
-| Bouton                             | Action                               |
-+=====================================+======================================+
-| **Install via Fontist**             | Installer la police via Fontist       |
-+-------------------------------------+--------------------------------------+
-| **Install via Google Fonts**        | Installer via Google Fonts            |
-+-------------------------------------+--------------------------------------+
-| **Install system package**            | Installer via apt                    |
-+-------------------------------------+--------------------------------------+
-| **Install safe recommendations**    | Installer toutes les recommandations sûres |
-+-------------------------------------+--------------------------------------+
-| **Import font file**                | Importer une police utilisateur        |
-+-------------------------------------+--------------------------------------+
-| **Accept fallback**                 | Créer un alias Fontconfig             |
-+-------------------------------------+--------------------------------------+
-| **Ignore**                         | Ignorer la police (session-only)       |
-+-------------------------------------+--------------------------------------+
-| **Exporter**                       | Exporter le tableau (JSON, CSV, Markdown) |
-+-------------------------------------+--------------------------------------+
+| Button                             | Action                               |
+|=====================================|======================================|
+| **Install via Fontist**             | Install the selected font via Fontist |
+| **Install via Google Fonts**        | Install the selected font via Google Fonts |
+| **Install system package**          | Install via the system package manager (apt) |
+| **Install safe recommendations**    | Install all fonts marked as safe (Low/Medium risk) |
+| **Import font file**                | Import a user‑provided font file |
+| **Accept fallback**                 | Create a Fontconfig alias |
+| **Ignore**                          | Ignore the font for this session |
+| **Export**                          | Export the table (JSON, CSV, Markdown) |
+|-------------------------------------+--------------------------------------|
 
 .. note::
-   - Le bouton **Install safe recommendations** installe toutes les polices marquées comme sûres (Low/Medium risk).
-   - Les boutons d'action sont désactivés si aucune ligne n'est sélectionnée.
+   - The **Install safe recommendations** button installs every font with a Low/Medium risk flag.
+   - Action buttons are disabled until at least one row is selected.
 
-Couleurs après installation
---------------------------
+Row colors after installation
+------------------------------
 
-Après une installation réussie, les lignes deviennent **vertes** et affichent :
-
+After a successful installation the rows become **green** and display one of:
 
 .. code-block:: text
 
-   ✅ Installed via Fontist
-   ✅ Installed via Google Fonts
-   ✅ Imported
+   ✓ Installed via Fontist
+   ✓ Installed via Google Fonts
+   ✓ Imported
 
-Si une installation échoue, la ligne devient **jaune** avec un message d'erreur dans le panneau de détails.
+If an installation fails the row turns **yellow** and an error message appears in the details panel.
 
-Panneau de détails
------------------
+Details Panel
+-------------
 
-Le panneau de droite affiche des informations détaillées pour la ligne sélectionnée :
+The right‑hand panel shows detailed information for the selected row:
 
-- **Statut** : Installed/Not installed/Substituted
-- **Occurrences** : Nombre de fois où la police est utilisée
-- **Fichiers** : Liste des fichiers utilisant cette police
-- **Recommandation** : Détail de l'action recommandée
-- **Alias Fontconfig** : Si un fallback est actif
-- **Logs** : Messages de log (erreurs, avertissements)
+- **Status** – Installed / Not installed / Substituted
+- **Occurrences** – Number of times the font appears
+- **Files** – List of files using the font
+- **Recommendation** – Full recommendation description
+- **Fontconfig alias** – If a fallback is active
+- **Logs** – Error or warning messages
 
-Exemple de détails :
+Example details output:
 
 .. code-block:: text
 
@@ -146,96 +137,83 @@ Exemple de détails :
    Occurrences: 5
    Files: pres1.pptx, pres2.pptx
    Recommendation: Accept fallback to Montserrat (visual)
-   Alias Fontconfig: Futura PT Bold → Montserrat
+   Fontconfig alias: Futura PT Bold → Montserrat
    Logs: Alias created successfully
 
 Export
 ------
 
-Les deux vues (Scan et Résolution) supportent l'export dans plusieurs formats :
+Both Scan and Resolution views can be exported in several formats:
 
-- **JSON** : Données brutes pour traitement automatisé
-- **CSV** : Tableau lisible dans un tableur
-- **Markdown** : Rapport lisible en texte
+- **JSON** – Raw data for automated processing
+- **CSV** – Spreadsheet‑friendly table
+- **Markdown** – Human‑readable report
 
-Pour exporter :
+To export:
 
-1. Cliquez sur le bouton **Exporter** (en haut à droite)
-2. Choisissez le format
-3. Choisissez un emplacement pour sauvegarder le fichier
-4. Cliquez sur **Enregistrer**
+1. Click the **Export** button (top‑right).
+2. Choose the desired format.
+3. Choose a destination path.
+4. Click **Save**.
 
-Exemple de rapport Markdown exporté :
+Sample Markdown export:
 
 .. code-block:: markdown
 
-   # Rapport de scan - 24/06/2026
+   # Scan Report – 2026‑06‑24
+   
+   ## Summary
+   - Folder: ~/Documents/Presentations
+   - Unique fonts: 42
+   - Missing fonts: 12
+   
+   ## Fonts
+   
+   | Family         | Status   | Occurrences | Files                     |
+   |----------------|----------|-------------|---------------------------|
+   | Calibri        | Missing  | 42          | pres1.pptx, pres2.pptx   |
+   | Aptos          | Missing  | 12          | report.docx               |
+   | Montserrat      | Installed| 8           | pres1.pptx                |
+   | Futura PT Bold  | Substituted| 5         | pres3.pptx                |
 
-   ## Résumé
-   - Dossier: ~/Documents/Présentations
-   - Polices uniques: 42
-   - Polices manquantes: 12
-
-   ## Polices
-
-   | Family         | Status      | Occurrences | Files                     |
-   |----------------|-------------|-------------|---------------------------|
-   | Calibri        | Missing     | 42         | pres1.pptx, pres2.pptx   |
-   | Aptos          | Missing     | 12         | rapport.docx              |
-   | Montserrat      | Installed   | 8          | pres1.pptx                |
-   | Futura PT Bold  | Substituted | 5          | pres3.pptx                |
-
-.. _gui-workers:
-
-Workers et gestion des tâches
------------------------------
-
-L'interface utilise des workers en arrière-plan pour :
-
-- Scanner les dossiers
-- Installer des polices
-- Résoudre les recommandations
-
-Gestion des workers :
-
-- **Lancement** : Automatique lors du scan ou de l'installation
-- **Arrêt** : Les workers sont arrêtés automatiquement lors de la fermeture de la fenêtre
-- **Affichage** : Une barre de progression montre l'état du worker en cours
-
-.. note::
-   Fermer la fenêtre pendant un scan ou une installation peut causer des erreurs. Laissez les tâches se terminer avant de fermer.
-
-Mode offscreen (pour tests CI)
+Workers and task management
 ---------------------------
 
-L'interface peut être lancée sans interface graphique pour des tests automatisés :
+The GUI runs background workers for:
+
+- Scanning folders
+- Installing fonts
+- Resolving recommendations
+
+Workers start automatically when a task begins and are stopped cleanly when the window closes.
+
+.. note::
+   Closing the window while a worker is running may cause a crash. Allow workers to finish or click **Stop** before exiting.
+
+Off‑screen mode (for CI tests)
+------------------------------
+
+Run the GUI without a display (useful for automated tests):
 
 .. code-block:: bash
 
-   env QT_QPA_PLATFORM=offscreen \
-       pptx-font-resolver-gui
+   env QT_QPA_PLATFORM=offscreen pptx-font-resolver-gui
 
-Résultat attendu :
+The application will start, create the window in memory and then exit cleanly.
 
-- La fenêtre est créée en arrière-plan
-- ``window.windowTitle()`` retourne le titre de la fenêtre
-- La fenêtre est fermée automatiquement
-- Code de sortie : 0 (succès)
+Tips & tricks
+-------------
 
-.. note::
-   Utile pour valider que l'interface se lance correctement dans un pipeline CI/CD.
+- **Sorting** – Click a column header to sort the table.
+- **Search** – Use the search box at the top‑right to filter fonts.
+- **Multi‑select** – Hold Ctrl/Cmd to select multiple rows.
+- **Re‑scan** – After installing fonts, click **Re‑scan** to refresh the view.
 
-Astuces
--------
+See also
+--------
 
-- **Tri** : Cliquez sur l'en-tête d'une colonne pour trier le tableau
-- **Recherche** : Utilisez la barre de recherche en haut à droite pour filtrer les polices
-- **Sélection multiple** : Maintenez Ctrl/Cmd pour sélectionner plusieurs lignes
-- **Re-scan** : Bouton **Re-scan** pour relancer une analyse après installation
+- :doc:`gui-cas-pratiques` – Practical use‑cases for the GUI.
+- :doc:`fallbacks` – Understanding Fontconfig fallbacks.
+- :doc:`resolve-workflow` – Full end‑to‑end workflow.
+- :doc:`troubleshooting` – Common issues and solutions.
 
-Voir aussi
--------
-
-- :doc:`gui-cas-pratiques` pour des cas d'usage concrets
-- :doc:`fallbacks` pour comprendre les alias Fontconfig
-- :doc:`resolve-workflow` pour un workflow complet
