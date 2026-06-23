@@ -1,159 +1,210 @@
 # CLAUDE.md
 
-This file is a handoff note for continuing work on `pptx-font-resolver`.
+This is the short handoff note for continuing work on `pptx-font-resolver`.
+For a more detailed restart log, read `CODEX.md`.
 
-## Project summary
+## Current State
 
-`pptx-font-resolver` is a Python tool that scans PowerPoint `.pptx` and Word `.docx` files on
-Linux, extracts the fonts used by Office documents, checks whether exact fonts are
-available through Fontconfig, and reports risky substitutions.
+`pptx-font-resolver` is a Python 3.11+ Linux utility for scanning Office
+`.pptx` and `.docx` files, extracting font families, checking Fontconfig exact
+availability and substitutions, and recommending/installing safe resolutions.
 
-The codebase currently has two user surfaces:
+Current user surfaces:
 
-- CLI entry point: `pptx-font-resolver`
-- Optional Qt GUI entry point: `pptx-font-resolver-gui`
+- CLI: `.venv/bin/pptx-font-resolver`
+- Qt GUI: `.venv/bin/pptx-font-resolver-gui`
 
-The GUI and CLI share the same analysis core.
+There is no separate Textual/TUI binary at the moment. Earlier "TUI" references
+map to the terminal CLI and its Rich tables.
 
-## What has been implemented
+## Development Rules In This Checkout
 
-- Project scaffold with packaging, tests, Ruff, README, changelog, license, and
-  GitHub community files.
-- Recursive PPTX/DOCX discovery with bounded or infinite depth.
-- PPTX and DOCX parsing through ZIP/XML reads without extracting archives to disk.
-- Typeface extraction from PowerPoint XML.
-- Word `w:rFonts` extraction from document, styles, numbering, headers, footers, notes, comments, charts, and drawings.
-- Theme placeholder resolution for PowerPoint placeholders and Word theme fonts.
-- Embedded font detection through `ppt/fonts/*` and `word/fonts/*`.
-- Font aggregation by family, occurrence count, source files, and embedded
-  presence.
-- Fontconfig checks for exact installation and substitution family.
-- Risk classification for dangerous substitutions, especially symbol fonts and
+- Prefix shell commands with `rtk`.
+- Keep CLI and GUI behavior aligned when changing resolution or install flows.
+- Never install or download fonts during a scan.
+- Keep license acceptance explicit. Do not call Fontist with license acceptance
+  unless the user selected/confirmed that action.
+- After a development change, commit and push to `origin/main`.
+
+## Implemented Features
+
+- Recursive `.pptx` and `.docx` discovery with bounded or infinite depth.
+- ZIP/XML parsing without extracting Office files to disk.
+- PPTX font extraction from slides, layouts, masters, notes, handouts, charts,
+  tables, comments, and theme files.
+- DOCX font extraction from document XML, styles, numbering, headers, footers,
+  notes, comments, charts, drawings, and theme files.
+- PowerPoint and Word theme placeholder resolution.
+- Embedded font presence detection in `ppt/fonts/*` and `word/fonts/*`.
+- Font aggregation by family, occurrence count, files, and embedded presence.
+- Fontconfig exact-install detection, substitution detection, and base-family
+  normalization for style suffixes such as `Noto Sans CJK SC Regular`.
+- Risk classification for high-risk substitutions, especially symbol fonts and
   CJK fonts substituted by Latin families.
-- Conservative style suffix normalization, for example detecting
-  `Noto Sans CJK SC Regular` as available when `Noto Sans CJK SC` exists.
-- JSON, CSV, Markdown, and table report formatting.
-- Fontist integration for local user installs:
-  - `install-font`
-  - `install-missing`
-  - dry-run support
-  - per-font confirmation
-  - Yes / All / No prompt in CLI
-  - explicit license acceptance through Fontist only after user confirmation
-- Optional PySide6 GUI:
-  - folder picker
-  - depth and worker controls
-  - background scan worker with progress messages
-  - missing-only filter
-  - table of fonts, risks, Fontconfig matches, occurrences, files, and
-    recommendation
-  - JSON/CSV/Markdown export
-  - row details panel
-  - checkboxes for installable fonts
-  - `Install selected` button
-  - per-font Qt popup with `Yes`, `All`, and `No`
-  - background install worker using Fontist in local user location
-  - automatic rescan after installation finishes
-- Scan robustness improvement: unreadable directories are skipped instead of
-  aborting the whole scan.
+- CLI reports in table, JSON, CSV, and Markdown forms.
+- Fontist install commands with dry-run, per-font confirmation, explicit
+  license acceptance, user-location installs, `fc-cache`, and post-install
+  Fontconfig verification.
+- CLI `install-missing --all` mode for one global confirmation before trying
+  all missing Fontist-installable fonts.
+- Multi-source resolution engine:
+  - local Fontconfig status;
+  - Fontist exact candidates;
+  - Debian/Ubuntu package candidates;
+  - Google Fonts exact and curated visual candidates;
+  - metric-compatible curated candidates;
+  - manual-import recommendations;
+  - unsafe symbol-font detection.
+- Manual font import for user-owned `.ttf`, `.otf`, and `.ttc` files.
+- Live Google Fonts lookup/download through the Google Fonts CSS API, installed
+  into the user font area under
+  `~/.local/share/fonts/pptx-font-installer/google-fonts`.
+- Fontconfig alias persistence for accepted fallbacks:
+  - JSON store: `~/.config/pptx-font-resolver/fontconfig-aliases.json`
+  - generated Fontconfig file:
+    `~/.config/fontconfig/conf.d/90-pptx-font-resolver.conf`
+  - `fc-cache -f` refresh after writing aliases.
+- Qt GUI:
+  - folder picker, depth, jobs, missing-only filter;
+  - background scan, install, and resolve workers;
+  - install column with a header checkbox to select all visible installable rows;
+  - row coloring after Fontist installs: green installed, red unavailable,
+    yellow failed;
+  - tooltip for Fontist-unavailable rows asking for manual install;
+  - multi-source `Resolve all` table;
+  - `Explain`, `Install via Fontist`, `Install via Google Fonts`,
+    `Install system package`, `Install safe recommendations`,
+    `Import font file`, `Accept fallback`, and `Ignore`;
+  - JSON/CSV/Markdown export for both scan and resolution views;
+  - graceful shutdown of running workers to avoid `QThread` destruction crashes.
 
-## Current safety model
+## Important Commands
 
-No font is installed automatically during a scan.
-
-For Fontist installs, license acceptance is intentionally explicit:
-
-- CLI defaults to accepting a license only for fonts selected through an
-  interactive prompt.
-- GUI only calls Fontist with license acceptance after the user checks fonts and
-  confirms through `Yes` or `All`.
-- `install-missing --no-ask` is blocked when license acceptance would otherwise
-  happen without per-font confirmation.
-
-Fontist installs are scoped to the user location by default.
-
-## Important files
-
-- `pptx_font_resolver/cli.py`: Typer CLI commands and install prompts.
-- `pptx_font_resolver/qt_app.py`: PySide6 GUI and GUI workers.
-- `pptx_font_resolver/fontist_backend.py`: Fontist command wrapper.
-- `pptx_font_resolver/scanner.py`: PPTX/DOCX discovery and parsing orchestration.
-- `pptx_font_resolver/pptx_parser.py`: PPTX ZIP/XML font extraction.
-- `pptx_font_resolver/docx_parser.py`: DOCX ZIP/XML font extraction.
-- `pptx_font_resolver/resolver.py`: Fontconfig checks and risk classification.
-- `pptx_font_resolver/analysis.py`: shared scan/report analysis entry point.
-- `tests/`: focused unit tests for parser, resolver, CLI install behavior,
-  Fontist wrapper, scanner, reports, and Qt helpers.
-
-## Development commands
-
-Install for development:
+Validate the project:
 
 ```bash
-python -m pip install -e ".[dev]"
-python -m pip install -e ".[gui]"
-```
-
-Validate changes:
-
-```bash
-python -m ruff check .
-python -m pytest -q
-python -m compileall pptx_font_resolver tests
-```
-
-Qt smoke test without opening a visible window:
-
-```bash
-QT_QPA_PLATFORM=offscreen python -c 'from PySide6.QtWidgets import QApplication; from pptx_font_resolver.qt_app import _load_qt_modules, build_main_window; app = QApplication([]); window = build_main_window(_load_qt_modules())(); window.show(); print(window.windowTitle())'
-```
-
-In this workspace, Codex commands were run through `rtk`, for example:
-
-```bash
+rtk .venv/bin/python -m ruff check .
+rtk .venv/bin/python -m compileall pptx_font_resolver tests
 rtk .venv/bin/python -m pytest -q
-rtk env QT_QPA_PLATFORM=offscreen .venv/bin/python -c '...'
 ```
 
-## Recent verification
+Launch the GUI:
 
-After adding DOCX support and mixed Office document scanning, the
-following checks passed:
+```bash
+rtk .venv/bin/pptx-font-resolver-gui
+```
 
-- `rtk .venv/bin/python -m ruff check .`
-- `rtk .venv/bin/python -m pytest -q`
-- `rtk .venv/bin/python -m compileall pptx_font_resolver tests`
-- `rtk env QT_QPA_PLATFORM=offscreen .venv/bin/python -c '...'`
+Offscreen GUI smoke test:
 
-The current note describes the DOCX-support work in this branch; check `git log -1 --oneline` for the exact commit.
+```bash
+rtk env QT_QPA_PLATFORM=offscreen .venv/bin/python -c 'from PySide6.QtWidgets import QApplication; from pptx_font_resolver.qt_app import _load_qt_modules, build_main_window; app = QApplication([]); window = build_main_window(_load_qt_modules())(); window.show(); print(window.windowTitle()); window.close()'
+```
 
-## Suggested next work
+CLI resolution examples:
 
-- Add GUI tests around table population and checkbox selection using Qt test
-  helpers, not only pure helper tests.
-- Add a GUI install dry-run or preview mode so users can see the exact Fontist
-  commands before executing them.
-- Surface Fontist availability/probe status in the GUI before installation, so
-  fonts unavailable through Fontist are visibly disabled or annotated.
-- Improve install result reporting in the GUI by showing per-font success/failure
-  history instead of only appending text to the summary box.
-- Add cancellation support for long scans and long Fontist install batches.
-- Add a settings control for install location if user-level Fontist installs are
-  not enough in some workflows.
-- Add integration fixtures with real-world Office edge cases:
-  - Symbol / Wingdings / Webdings decks and documents
-  - Microsoft Office cloud fonts
-  - CJK presentations and Word documents
-  - documents with embedded fonts
-  - unreadable directories in recursive scans
-- Document a reproducible Linux setup for Fontist, Fontconfig, and Microsoft
-  core fonts where licensing permits it.
+```bash
+rtk .venv/bin/pptx-font-resolver resolve ~/CNRS/Presentations --provider google --format table --jobs 1
+rtk .venv/bin/pptx-font-resolver install-missing ~/CNRS/Presentations --provider google --dry-run --jobs 1
+rtk .venv/bin/pptx-font-resolver install-missing ~/CNRS/Presentations --provider google --execute --yes --jobs 1
+```
 
-## Notes for future agents
+Accept a fallback through Fontconfig from CLI:
 
-- Keep CLI and GUI behavior aligned when changing install or license flows.
-- Do not make scan operations install fonts.
-- Treat license acceptance as a user-confirmed action tied to selected fonts.
-- Keep risky substitution detection conservative; false positives are less
-  damaging than silently missing symbol/CJK substitutions.
-- Prefer focused tests for each behavior because this project is still small.
+```bash
+rtk .venv/bin/pptx-font-resolver accept-fallback "Futura PT Bold" "Montserrat" --source google-fonts
+```
+
+Test without touching real Fontconfig config:
+
+```bash
+rtk env XDG_CONFIG_HOME=/tmp/pptx-font-resolver-test .venv/bin/pptx-font-resolver accept-fallback "Futura PT Bold" "Montserrat" --source google-fonts --no-refresh-cache
+```
+
+## User Folder Findings
+
+The real folder investigated was `~/CNRS/Presentations`.
+
+Important observed fonts:
+
+- `Futura PT Bold` and `Futura PT Demi` -> Google visual fallback `Montserrat`.
+- `ElsevierGulliver` -> Google visual fallback `Source Serif 4`.
+- `LegacySans-Bold` -> Google visual fallback `Source Sans 3`.
+- `AdvOT...` generated subset-like names -> Google visual fallback `Noto Sans`.
+- `Noto Sans CJK SC Regular` is treated as available through the installed base
+  family `Noto Sans CJK SC`.
+
+Installed during prior work:
+
+- `Source Sans 3`
+- `Source Serif 4`
+
+Already present during verification:
+
+- `Montserrat`
+- `Noto Sans`
+
+One real file exceeded the ZIP guard and was reported invalid:
+
+```text
+~/CNRS/Presentations/Luis/Présentation HBD A3TS/diapos_A3TS_V2.pptx
+archive uncompressed size exceeds limit: 1498762844 > 524288000
+```
+
+## Key Files
+
+- `pptx_font_resolver/cli.py`: Typer commands and install orchestration.
+- `pptx_font_resolver/qt_app.py`: PySide6 GUI, workers, row coloring, actions.
+- `pptx_font_resolver/fontconfig.py`: exact install and substitution checks.
+- `pptx_font_resolver/fontist_backend.py`: Fontist wrapper and probe timeout.
+- `pptx_font_resolver/scanner.py`: Office discovery and parser orchestration.
+- `pptx_font_resolver/pptx_parser.py`: PPTX ZIP/XML extraction.
+- `pptx_font_resolver/docx_parser.py`: DOCX ZIP/XML extraction.
+- `pptx_font_resolver/resolution/engine.py`: recommendation selection.
+- `pptx_font_resolver/resolution/providers.py`: Fontist, distro, Google,
+  manual, Fontconfig providers.
+- `pptx_font_resolver/resolution/google_fonts.py`: live Google Fonts install.
+- `pptx_font_resolver/resolution/manual_import.py`: manual font import.
+- `pptx_font_resolver/resolution/fontconfig_aliases.py`: persisted aliases for
+  accepted fallbacks.
+- `pptx_font_resolver/data/*.json`: curated aliases, distro packages, Google
+  family hints, symbol-font risk data.
+- `tests/`: 102 focused tests as of this handoff.
+
+## Recent Commits
+
+- `1b374c4 Persist accepted fallbacks with Fontconfig`
+- `c876856 Fix Google fallback resolution for presentations`
+- `23a0473 Add live Google Fonts installation`
+- `1d8e3f2 Expand resolution CdC test coverage`
+- `7c95aad Add selected GUI font actions`
+- `04ae6a5 Add GUI resolution workflow`
+- `79185be Add manual font import CLI`
+- `9095ab7 Add multi-source font resolution`
+
+## Last Verification
+
+After the Fontconfig fallback persistence work:
+
+```bash
+rtk .venv/bin/python -m ruff check .
+rtk .venv/bin/python -m compileall pptx_font_resolver tests
+rtk .venv/bin/python -m pytest -q
+```
+
+Result: `102 passed`.
+
+## Remaining Work
+
+- Add a GUI management view for accepted Fontconfig fallbacks: list, remove,
+  update, and rescan.
+- Add a CLI command to list/remove accepted fallback aliases.
+- Decide whether `Ignore` should remain session-only or be persisted.
+- Add stronger end-to-end GUI tests around real `Resolve all` interactions.
+- Consider a true TUI/Textual entry point only if it is still desired; none
+  exists now.
+- Add more curated mappings for the exact fonts found in real presentation
+  folders.
+- Add optional LibreOffice round-trip checks: open/resave with embedded fonts
+  and verify whether the resolved fallback font is embedded as expected.
+- Improve documentation for the real workflow from scan -> resolve -> install
+  Google/Open fonts -> accept fallback -> LibreOffice resave/embed.

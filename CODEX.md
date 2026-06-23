@@ -1,769 +1,586 @@
-# Cahier des charges — `pptx-font-resolver`
+# CODEX.md
 
-## Objectif général
+This document is the detailed restart note for continuing work on
+`pptx-font-resolver` without reloading the previous Codex session.
 
-Développer un utilitaire Linux permettant d’analyser récursivement un dossier contenant des présentations PowerPoint `.pptx`, d’extraire toutes les polices utilisées, de déterminer si elles sont installées localement ou seulement substituées, puis de proposer une résolution propre via Fontconfig, Fontist, paquets système ou substitutions métriques.
+Use `CLAUDE.md` for the compact handoff. Use this file when you need the actual
+state of the implementation, the latest workflow, and what remains to be built.
 
-Le problème visé est l’interopérabilité PowerPoint / LibreOffice Impress sous Linux : les différences de rendu proviennent souvent de polices Microsoft absentes, notamment Calibri, Cambria, Aptos, Segoe UI, MS PGothic, etc.
+## Repository
 
-L’outil doit d’abord fournir une CLI robuste, puis un petit front-end local réutilisant exactement le même cœur applicatif.
+Path:
 
----
+```bash
+/home/jeff/Code/PPTXFontInstaller
+```
 
-## Contraintes générales
+Command convention in this workspace:
 
-* Langage principal : Python 3.11+.
-* CLI : `typer`.
-* Affichage terminal : `rich`.
-* Lecture PPTX : module standard `zipfile`, sans extraction complète du PPTX sur disque.
-* Parsing rapide : extraction en bytes/regex des attributs `typeface="..."`.
-* Option future possible : mode strict XML avec `lxml`, mais non obligatoire dans le MVP.
-* Parallélisation : scanner les fichiers `.pptx` en parallèle.
-* Cache : prévoir une base SQLite dans `~/.cache/pptx-font-resolver/index.sqlite`.
-* Front-end local : FastAPI + HTMX, à implémenter après le MVP CLI.
-* Ne jamais télécharger de police automatiquement sans action explicite de l’utilisateur.
-* Ne jamais utiliser de sources non officielles ou douteuses pour les polices.
-* Ne jamais installer les polices propriétaires globalement dans `/usr/share/fonts` ; privilégier l’installation utilisateur.
+```bash
+rtk <command>
+```
 
----
+Examples:
 
-## Arborescence attendue
+```bash
+rtk git status --short --branch
+rtk .venv/bin/python -m pytest -q
+```
+
+Branch convention used in the latest work: develop directly on `main`, then
+commit and push to `origin/main` at the end of each development step.
+
+## Product Goal
+
+`pptx-font-resolver` helps diagnose and resolve font problems when PowerPoint
+or Word files are opened on Linux, especially through LibreOffice.
+
+The tool scans `.pptx` and `.docx` files, extracts font usage from OOXML,
+checks exact local availability through Fontconfig, identifies risky
+substitutions, and proposes safe resolution actions through several sources:
+
+1. already-installed local fonts;
+2. Fontist exact installs;
+3. Debian/Ubuntu packages;
+4. Google Fonts exact or open visual substitutes;
+5. metric-compatible replacements;
+6. manual import for user-owned font files;
+7. Fontconfig aliases for accepted fallbacks;
+8. unresolved/manual handling for unsafe or proprietary cases.
+
+The guiding rule is traceability: a recommendation must say what it will do,
+where the font comes from, and whether it is exact, metric-compatible, visual,
+generic, or unsafe.
+
+## Current User Surfaces
+
+There are two installed entry points:
+
+```bash
+.venv/bin/pptx-font-resolver
+.venv/bin/pptx-font-resolver-gui
+```
+
+There is no separate Textual/TUI application yet. Earlier "TUI" language should
+be interpreted as the Rich terminal CLI unless a future task explicitly asks for
+a real TUI.
+
+Current CLI commands:
 
 ```text
-pptx_font_resolver/
-  __init__.py
-  cli.py
-  scanner.py
-  pptx_parser.py
-  theme_resolver.py
-  fontconfig.py
-  fontist_backend.py
-  resolver.py
-  cache.py
-  report.py
-  webapp.py
-tests/
-  test_depth_walk.py
-  test_pptx_parser.py
-  test_theme_resolver.py
-  test_fontconfig.py
-  test_reports.py
-pyproject.toml
-README.md
+scan
+fonts
+report
+resolve
+explain
+import-font
+import-fonts
+install-google-font
+accept-fallback
+install-font
+install-missing
 ```
 
----
+## Safety and License Model
 
-## Fonctionnalités CLI à fournir
+Scanning never installs fonts.
 
-### 1. Scanner récursivement un dossier
+Fontist:
 
-Commande :
+- `install-font` and `install-missing` do not accept licenses by default.
+- `--accept-license` is explicit.
+- GUI Fontist installation asks before installing selected fonts.
+- `install-missing --no-ask` is blocked when it would accept licenses without
+  per-font confirmation.
 
-```bash
-pptx-font-resolver scan ./dossier
-```
+Google Fonts:
 
-Options :
+- only uses Google Fonts CSS metadata and downloaded font URLs from that
+  official flow;
+- installs into the user font area under
+  `~/.local/share/fonts/pptx-font-installer/google-fonts`;
+- refreshes Fontconfig cache after installation unless disabled in code paths.
 
-```bash
---depth N
---depth infinite
---jobs N
---no-cache
---format table|json|csv
---output rapport.json
---show-files
---only-missing
---all-fonts
-```
+Manual import:
 
-Comportement attendu :
+- only imports `.ttf`, `.otf`, and `.ttc` files already owned/provided by the
+  user;
+- does not modify font files;
+- optionally copies or symlinks into a user font directory and refreshes
+  Fontconfig.
 
-* `--depth 0` : scanne seulement le dossier donné.
-* `--depth 1` : scanne le dossier + ses sous-dossiers directs.
-* `--depth N` : profondeur bornée.
-* `--depth infinite` : récursion complète.
-* Par défaut : `--depth infinite`.
-* Par défaut : `--jobs = min(8, os.cpu_count())`.
+Fontconfig accepted fallbacks:
 
-La commande doit trouver tous les `.pptx` valides sous la profondeur demandée.
+- do not modify Office documents;
+- do not install any font;
+- create a user-level Fontconfig alias so the requested family resolves to the
+  chosen installed fallback family.
 
----
+## Current Architecture
 
-### 2. Lister toutes les polices associées à toutes les présentations trouvées
+Core modules:
 
-Commande prioritaire à implémenter :
+- `pptx_font_resolver/scanner.py`
+  discovers Office files, applies depth and ZIP safety guards, and coordinates
+  parser execution.
+- `pptx_font_resolver/pptx_parser.py`
+  extracts PowerPoint fonts from ZIP/XML entries without full extraction.
+- `pptx_font_resolver/docx_parser.py`
+  extracts Word fonts from document XML, styles, numbering, headers, footers,
+  comments, notes, charts, drawings, and theme data.
+- `pptx_font_resolver/fontconfig.py`
+  wraps `fc-list` and `fc-match`; distinguishes exact install from Fontconfig
+  substitution; strips conservative style suffixes such as `Regular`.
+- `pptx_font_resolver/resolver.py`
+  builds the older font report with risk classification.
+- `pptx_font_resolver/analysis.py`
+  shared scan/report entry point for CLI and GUI.
+- `pptx_font_resolver/report.py`
+  non-resolution JSON/CSV/Markdown output.
+- `pptx_font_resolver/fontist_backend.py`
+  probes and installs with Fontist; includes probe timeout and optional
+  `fc-cache`.
 
-```bash
-pptx-font-resolver fonts ./dossier --depth infinite
-```
+Resolution package:
 
-Cette commande doit lister toutes les polices rencontrées dans toutes les présentations trouvées, avec au minimum :
+- `pptx_font_resolver/resolution/models.py`
+  defines `FontCandidate`, `FontResolution`, and `ResolutionReport`.
+- `pptx_font_resolver/resolution/engine.py`
+  ranks provider candidates and chooses the recommended action.
+- `pptx_font_resolver/resolution/providers.py`
+  implements local, Fontist, distro package, Google Fonts, manual, curated, and
+  Fontconfig candidates.
+- `pptx_font_resolver/resolution/google_fonts.py`
+  performs live Google Fonts lookup and user-local installation.
+- `pptx_font_resolver/resolution/manual_import.py`
+  reads family metadata and imports user-owned font files.
+- `pptx_font_resolver/resolution/fontconfig_aliases.py`
+  persists accepted fallbacks through user Fontconfig aliases.
+- `pptx_font_resolver/resolution/report.py`
+  renders resolution reports as table, JSON, CSV, and Markdown.
+
+Data files:
+
+- `pptx_font_resolver/data/font_aliases.json`
+  curated exact/metric/visual fallback mapping.
+- `pptx_font_resolver/data/distro_packages.json`
+  Debian/Ubuntu package hints.
+- `pptx_font_resolver/data/google_fonts_index.json`
+  curated Google Fonts fallback hints.
+- `pptx_font_resolver/data/symbol_fonts.json`
+  unsafe symbol-font list and notes.
+
+GUI:
+
+- `pptx_font_resolver/qt_app.py`
+  contains the PySide6 UI, scan/install/resolve workers, row coloring, actions,
+  and export buttons.
+
+Tests:
+
+- all tests live in `tests/`;
+- there are no separate shell scripts in `tests/`;
+- GUI behavior is tested through `tests/test_qt_app.py`, including offscreen
+  Qt windows.
+
+## Implemented Scanner and Analysis Behavior
+
+Implemented:
+
+- `.pptx` and `.docx` discovery;
+- depth support with integer depth or `infinite`;
+- parallel scan jobs;
+- invalid/unreadable documents reported without aborting the scan;
+- ZIP safety guard to avoid pathological archives;
+- no full extraction of Office archives to disk;
+- embedded font entry detection;
+- PowerPoint and Word theme resolution;
+- family aggregation across files.
+
+Important real-world guard observed in `~/CNRS/Presentations`:
 
 ```text
-Police              Statut exact       Substitution Fontconfig     Occurrences    Fichiers
-Aptos               installée          Aptos                       12             4
-Calibri             non installée      Carlito                     31             10
-Cambria             non installée      Caladea                     8              3
-Arial               installée          Arial                       22             9
-MS PGothic          non installée      Noto Sans CJK JP            2              1
+archive uncompressed size exceeds limit: 1498762844 > 524288000
 ```
 
-Important : distinguer clairement :
-
-* police exactement installée ;
-* police non installée mais substituée par Fontconfig ;
-* police embarquée dans un PPTX ;
-* police résoluble par Fontist ;
-* police inconnue ;
-* fallback métrique connu.
-
-Exemple de sortie détaillée avec `--show-files` :
+This affected:
 
 ```text
-Calibri
-  statut exact       : non installée
-  fc-match           : Carlito
-  fallback métrique  : Carlito
-  utilisée dans :
-    - cours_meca.pptx
-    - soutenance_finale.pptx
-
-Aptos
-  statut exact       : installée
-  fc-match           : /home/jeff/.fontist/fonts/aptos/Aptos.ttf
-  utilisée dans :
-    - projet_2026.pptx
+~/CNRS/Presentations/Luis/Présentation HBD A3TS/diapos_A3TS_V2.pptx
 ```
 
-Formats exigés :
+It is treated as an invalid/guarded document, not a crash.
+
+## Implemented CLI Behavior
+
+General report commands:
 
 ```bash
-pptx-font-resolver fonts ./dossier --format table
-pptx-font-resolver fonts ./dossier --format json
-pptx-font-resolver fonts ./dossier --format csv
+rtk .venv/bin/pptx-font-resolver scan ./documents --depth infinite
+rtk .venv/bin/pptx-font-resolver fonts ./documents --all-fonts --show-files
+rtk .venv/bin/pptx-font-resolver report ./documents --format json --output report.json
 ```
 
-Le JSON doit contenir une structure exploitable par le futur front-end.
-
----
-
-### 3. Rapport complet
-
-Commande :
+Multi-source resolution:
 
 ```bash
-pptx-font-resolver report ./dossier --depth infinite --output report.html
+rtk .venv/bin/pptx-font-resolver resolve ./documents --provider all --format table
+rtk .venv/bin/pptx-font-resolver resolve ./documents --provider google --format json
+rtk .venv/bin/pptx-font-resolver explain "Futura PT Bold" --provider all
 ```
 
-Formats attendus :
+Fontist:
 
 ```bash
---format html
---format json
---format csv
---format markdown
+rtk .venv/bin/pptx-font-resolver install-font "Aptos" --location user
+rtk .venv/bin/pptx-font-resolver install-font "Aptos" --location user --accept-license
+rtk .venv/bin/pptx-font-resolver install-missing ./documents --ask --location user
+rtk .venv/bin/pptx-font-resolver install-missing ./documents --all --location user
 ```
 
-Le rapport doit contenir :
-
-* nombre de PPTX analysés ;
-* liste des PPTX ignorés ou invalides ;
-* liste globale des polices ;
-* statut installé/non installé ;
-* substitution Fontconfig ;
-* présence éventuelle de police embarquée ;
-* fichiers où chaque police apparaît ;
-* recommandations d’action :
-
-  * rien à faire ;
-  * installer via Fontist ;
-  * installer via paquet Debian/Ubuntu ;
-  * utiliser substitut métrique ;
-  * import utilisateur ;
-  * risque élevé pour LibreOffice.
-
----
-
-### 4. Installation guidée via Fontist
-
-Commande :
+APT / Google guided installs from resolution output:
 
 ```bash
-pptx-font-resolver install-font "Aptos"
+rtk .venv/bin/pptx-font-resolver install-missing ./documents --provider apt --dry-run
+rtk .venv/bin/pptx-font-resolver install-missing ./documents --provider google --dry-run
+rtk .venv/bin/pptx-font-resolver install-missing ./documents --provider google --execute --yes
 ```
 
-Options :
+Google Fonts single-family install:
 
 ```bash
---backend fontist
---ask-license
---accept-license
---user
---dry-run
+rtk .venv/bin/pptx-font-resolver install-google-font "Merriweather" --dry-run
+rtk .venv/bin/pptx-font-resolver install-google-font "Source Serif 4"
 ```
 
-Comportement :
-
-* Par défaut, ne pas accepter automatiquement les licences.
-* Pour une police Fontist qui demande une licence, lancer Fontist sans `--accept-all-licenses`, capturer la sortie, afficher le texte de licence ou le signaler, puis demander validation.
-* Si l’utilisateur accepte, relancer :
+Manual import:
 
 ```bash
-fontist install --newest --accept-all-licenses "Nom Police"
+rtk .venv/bin/pptx-font-resolver import-font ~/Downloads/Aptos.ttf
+rtk .venv/bin/pptx-font-resolver import-fonts ~/Downloads/fonts --dry-run
 ```
 
-* Appeler ensuite :
+Accepted fallback via Fontconfig:
+
+```bash
+rtk .venv/bin/pptx-font-resolver accept-fallback "Futura PT Bold" "Montserrat" --source google-fonts
+```
+
+That command writes:
+
+```text
+~/.config/pptx-font-resolver/fontconfig-aliases.json
+~/.config/fontconfig/conf.d/90-pptx-font-resolver.conf
+```
+
+and runs:
 
 ```bash
 fc-cache -f
 ```
 
-* Vérifier avec :
+Safe temporary test without touching the real user config:
 
 ```bash
-fc-match "Nom Police"
+rtk env XDG_CONFIG_HOME=/tmp/pptx-font-resolver-test .venv/bin/pptx-font-resolver accept-fallback "Futura PT Bold" "Montserrat" --source google-fonts --no-refresh-cache
 ```
 
-* Ne jamais appeler `--accept-all-licenses` sur une liste complète de polices sans validation préalable police par police.
+## Implemented GUI Behavior
 
----
-
-### 5. Installation de toutes les polices manquantes résolubles
-
-Commande :
+Launch:
 
 ```bash
-pptx-font-resolver install-missing ./dossier --depth infinite --ask
+rtk .venv/bin/pptx-font-resolver-gui
 ```
 
-Comportement :
+Scan view:
 
-* Scanner le dossier.
-* Détecter les polices manquantes.
-* Pour chaque police :
+- choose folder;
+- choose depth;
+- choose number of jobs;
+- filter to missing fonts;
+- table with install checkbox, font, risk, exact status, Fontconfig match,
+  occurrences, files, and recommendation;
+- header checkbox above install column selects all visible installable rows;
+- row details panel;
+- JSON/CSV/Markdown export.
 
-  * vérifier si elle est déjà exactement installée ;
-  * sinon vérifier si Fontist dispose d’une formule ;
-  * sinon vérifier si un paquet système connu existe ;
-  * sinon proposer un fallback métrique ;
-  * sinon classer comme non résolue.
-* Demander confirmation police par police.
-* Afficher clairement la source, le risque et le statut de licence avant toute installation.
+Fontist install view behavior:
 
----
+- `Install selected`;
+- `Install all missing`;
+- popup with per-font confirmation and Yes / All / No flow;
+- background worker;
+- rescan after install;
+- green rows for installed fonts;
+- red rows for fonts unavailable through Fontist;
+- yellow rows for Fontist install failures;
+- unavailable Fontist row tooltip says the font is not installable through
+  Fontist and must be installed manually.
 
-## Parsing PPTX
+Resolution view:
 
-Un `.pptx` est un ZIP. Ne jamais décompresser tout le fichier sur disque.
+- `Resolve all` uses the multi-source engine;
+- Fontist probing is skipped in the GUI resolve worker by default to avoid long
+  blocking probes, but Fontist-specific install remains available;
+- table columns:
+  - `Family`
+  - `Installed`
+  - `Fontist`
+  - `Recommended action`
+  - `Recommended family`
+  - `Relation`
+  - `Source`
+  - `Risk`
+  - `Files`
+- actions:
+  - `Explain`
+  - `Install via Fontist`
+  - `Install via Google Fonts`
+  - `Install system package`
+  - `Install safe recommendations`
+  - `Import font file`
+  - `Accept fallback`
+  - `Ignore`
 
-Lire uniquement les entrées pertinentes :
+`Accept fallback` behavior:
+
+- takes the selected resolution row;
+- finds the recommended fallback candidate;
+- writes a user Fontconfig alias from requested family to recommended family;
+- refreshes Fontconfig cache;
+- marks the family as accepted in GUI state;
+- colors the row green;
+- shows the config path in the details panel.
+
+Example:
 
 ```text
-ppt/theme/*.xml
-ppt/slides/*.xml
-ppt/slideLayouts/*.xml
-ppt/slideMasters/*.xml
-ppt/notesSlides/*.xml
-ppt/notesMasters/*.xml
-ppt/handoutMasters/*.xml
-ppt/charts/*.xml
-ppt/tables/*.xml
-ppt/comments/*.xml
-ppt/fonts/*
+Futura PT Bold -> Montserrat
 ```
 
-Extraction des polices :
+becomes a Fontconfig alias in:
 
-* Chercher les attributs XML :
+```text
+~/.config/fontconfig/conf.d/90-pptx-font-resolver.conf
+```
+
+`Ignore` behavior:
+
+- currently session-only;
+- it only greys the row in the GUI session;
+- it does not write config and does not modify documents.
+
+Worker shutdown:
+
+- running scan/install/resolve workers are stopped defensively on app close;
+- this was added after reproducing a Qt abort:
+  `QThread: Destroyed while thread '' is still running`.
+
+## Google Fonts and Real Presentation Folder State
+
+The folder investigated during the latest work:
+
+```bash
+~/CNRS/Presentations
+```
+
+Useful commands for this folder:
+
+```bash
+rtk .venv/bin/pptx-font-resolver fonts ~/CNRS/Presentations --format json --show-files --jobs 1
+rtk .venv/bin/pptx-font-resolver resolve ~/CNRS/Presentations --provider google --format table --jobs 1
+rtk .venv/bin/pptx-font-resolver install-missing ~/CNRS/Presentations --provider google --dry-run --jobs 1
+rtk .venv/bin/pptx-font-resolver install-missing ~/CNRS/Presentations --provider google --execute --yes --jobs 1
+```
+
+Observed unresolved/problem families and current fallback mapping:
+
+```text
+AdvOT... generated subset-like names -> Noto Sans
+ElsevierGulliver -> Source Serif 4
+Futura PT Bold -> Montserrat
+Futura PT Demi -> Montserrat
+LegacySans-Bold -> Source Sans 3
+Noto Sans CJK SC Regular -> installed base family Noto Sans CJK SC
+```
+
+Google/Open fonts installed during the work:
+
+```text
+Source Sans 3
+Source Serif 4
+```
+
+Fonts already present during verification:
+
+```text
+Montserrat
+Noto Sans
+```
+
+After those installs, `install-missing --provider google --dry-run` reports no
+remaining Google-installable action for that folder because the recommended
+fallback families are already installed.
+
+## What "Accept Fallback" Means Technically
+
+It does not rewrite the `.pptx` or `.docx`.
+
+It configures the local Linux font resolver:
 
 ```xml
-typeface="..."
+<alias>
+  <family>Futura PT Bold</family>
+  <prefer>
+    <family>Montserrat</family>
+  </prefer>
+</alias>
 ```
 
-* Détecter notamment :
+Practical consequence:
 
-```xml
-<a:latin typeface="Aptos"/>
-<a:ea typeface="Yu Gothic"/>
-<a:cs typeface="Arial"/>
-<a:sym typeface="Wingdings"/>
-<a:font script="Jpan" typeface="Yu Gothic"/>
-```
+1. the Office document still asks for `Futura PT Bold`;
+2. Fontconfig resolves that family to `Montserrat`;
+3. LibreOffice should render with the fallback family;
+4. if LibreOffice then saves with font embedding enabled, it should normally
+   embed the resolved/used open font, subject to LibreOffice behavior and font
+   embedding permissions.
 
-* Normaliser les noms :
+Important nuance: the document XML may still contain the original family name.
+The fallback is a local rendering policy, not a document-level substitution.
 
-  * enlever les chaînes vides ;
-  * enlever les espaces superflus ;
-  * ignorer les placeholders OOXML sauf pour résolution de thème.
+## Verification Commands
 
----
-
-## Résolution des polices de thème
-
-PowerPoint peut utiliser des alias de thème au lieu d’un nom de police explicite :
-
-```text
-+mn-lt
-+mj-lt
-+mn-ea
-+mj-ea
-+mn-cs
-+mj-cs
-```
-
-Il faut lire les fichiers :
-
-```text
-ppt/theme/theme*.xml
-```
-
-et résoudre :
-
-```text
-+mn-lt -> minorFont latin
-+mj-lt -> majorFont latin
-+mn-ea -> minorFont East Asian
-+mj-ea -> majorFont East Asian
-+mn-cs -> minorFont complex script
-+mj-cs -> majorFont complex script
-```
-
-Le résultat doit distinguer :
-
-```json
-{
-  "raw_fonts": ["+mn-lt", "Arial"],
-  "theme_fonts": {
-    "minor_latin": "Aptos",
-    "major_latin": "Aptos Display"
-  },
-  "resolved_fonts": ["Aptos", "Arial"]
-}
-```
-
----
-
-## Détection des polices embarquées
-
-Détecter la présence de fichiers de polices embarquées dans le PPTX.
-
-Ne pas les extraire automatiquement dans le MVP.
-
-Rapporter simplement :
-
-```text
-Aptos : utilisée, non installée, mais embarquée dans presentation.pptx
-```
-
-Prévoir plus tard une option experte :
+Full validation:
 
 ```bash
-pptx-font-resolver extract-embedded ./presentation.pptx --private-cache
+rtk .venv/bin/python -m ruff check .
+rtk .venv/bin/python -m compileall pptx_font_resolver tests
+rtk .venv/bin/python -m pytest -q
 ```
 
-Mais cette option ne fait pas partie du MVP.
-
----
-
-## Détection d’installation locale
-
-Utiliser Fontconfig.
-
-Pour chaque police `F` :
-
-```bash
-fc-match "F"
-fc-list
-```
-
-Il faut distinguer :
-
-* `F` exactement présente ;
-* `F` absente mais substituée ;
-* substitution métrique ;
-* substitution générique.
-
-Attention : `fc-match "Calibri"` peut renvoyer `Carlito`. Cela ne veut pas dire que Calibri est installée.
-
-Implémenter une fonction :
-
-```python
-FontStatus(
-    requested_family: str,
-    exact_installed: bool,
-    matched_family: str,
-    matched_file: str | None,
-    is_substituted: bool,
-)
-```
-
----
-
-## Table de substitutions métriques connue
-
-Inclure une table initiale :
-
-```python
-METRIC_COMPATIBLE = {
-    "Calibri": ["Carlito"],
-    "Cambria": ["Caladea"],
-    "Arial": ["Arial", "Liberation Sans", "Arimo"],
-    "Times New Roman": ["Times New Roman", "Liberation Serif", "Tinos"],
-    "Courier New": ["Courier New", "Liberation Mono", "Cousine"],
-}
-```
-
-Important : les substitutions métriques réduisent les risques de décalage, mais ne garantissent pas une mise en page identique. Le rapport doit le dire.
-
----
-
-## Intégration Fontist
-
-Utiliser Fontist comme backend principal pour les polices récupérables proprement.
-
-Exemples :
-
-```bash
-fontist install --newest "Aptos"
-fontist install --newest "MS PGothic"
-fontist install --newest --accept-all-licenses "MS PGothic"
-```
-
-Comportement à implémenter :
-
-1. Tester si Fontist connaît la police.
-2. Si la police demande une licence, capturer la sortie.
-3. Ne pas accepter automatiquement.
-4. Demander validation explicite.
-5. Installer seulement après validation.
-6. Relancer `fc-cache`.
-7. Vérifier avec `fc-match`.
-
-Définir une abstraction :
-
-```python
-class FontistBackend:
-    def status(font_name: str) -> FontistStatus: ...
-    def probe_install(font_name: str) -> FontistProbeResult: ...
-    def install(font_name: str, accept_license: bool) -> FontistInstallResult: ...
-```
-
-`probe_install` doit exécuter Fontist sans acceptation automatique pour récupérer le comportement :
-
-* disponible sans licence ;
-* licence requise ;
-* formule absente ;
-* erreur réseau ;
-* erreur inconnue.
-
----
-
-## Politique de licence et sécurité
-
-Règles impératives :
-
-* Ne pas télécharger de polices depuis des sites non officiels.
-* Ne pas scraper le web à la recherche de `.ttf`.
-* Ne pas modifier les fichiers de police.
-* Ne pas contourner les restrictions `fsType`.
-* Ne pas redistribuer de polices propriétaires.
-* Installer les polices propriétaires uniquement dans un emplacement utilisateur.
-* Afficher la licence ou au minimum le backend/source/licence avant validation.
-* Garder une trace locale des acceptations dans le cache SQLite, par exemple :
-
-  * nom de la police ;
-  * date ;
-  * backend ;
-  * version éventuelle ;
-  * source ;
-  * hash éventuel ;
-  * mode d’acceptation.
-
----
-
-## Cache SQLite
-
-Créer :
+Expected current test count after the latest Fontconfig alias work:
 
 ```text
-~/.cache/pptx-font-resolver/index.sqlite
+102 passed
 ```
 
-Tables proposées :
-
-```sql
-documents(
-  id INTEGER PRIMARY KEY,
-  path TEXT UNIQUE,
-  size INTEGER,
-  mtime_ns INTEGER,
-  sha256 TEXT,
-  scanned_at TEXT
-);
-
-document_fonts(
-  document_id INTEGER,
-  family TEXT,
-  raw_family TEXT,
-  source_xml TEXT,
-  source_kind TEXT
-);
-
-font_status(
-  family TEXT PRIMARY KEY,
-  checked_at TEXT,
-  exact_installed INTEGER,
-  matched_family TEXT,
-  matched_file TEXT,
-  fontist_available INTEGER,
-  fontist_license_required INTEGER,
-  recommendation TEXT
-);
-
-license_acceptance(
-  family TEXT,
-  backend TEXT,
-  accepted_at TEXT,
-  source TEXT,
-  license_label TEXT
-);
-```
-
-Ne pas recalculer un PPTX si :
-
-* chemin identique ;
-* taille identique ;
-* `mtime_ns` identique.
-
-Prévoir une option :
+CLI help:
 
 ```bash
---refresh
+rtk .venv/bin/pptx-font-resolver --help
 ```
 
-pour forcer le rescan.
-
----
-
-## Parallélisation
-
-Scanner les PPTX en parallèle au niveau fichier, pas au niveau XML.
-
-Utiliser :
-
-```python
-concurrent.futures.ThreadPoolExecutor
-```
-
-Raison :
-
-* beaucoup d’I/O ;
-* décompression ZIP en C ;
-* overhead moindre que `multiprocessing`.
-
-Gestion :
-
-* collecter les erreurs sans arrêter tout le scan ;
-* afficher les fichiers corrompus ;
-* continuer si un PPTX est invalide.
-
----
-
-## Front-end local
-
-Après le MVP CLI, créer une interface locale :
+GUI smoke test without opening a visible window:
 
 ```bash
-pptx-font-resolver web
+rtk env QT_QPA_PLATFORM=offscreen .venv/bin/python -c 'from PySide6.QtWidgets import QApplication; from pptx_font_resolver.qt_app import _load_qt_modules, build_main_window; app = QApplication([]); window = build_main_window(_load_qt_modules())(); window.show(); print(window.windowTitle()); window.close()'
 ```
 
-Serveur :
+No dedicated TUI test exists because no dedicated TUI exists.
+
+## Recent Commits To Know
+
+Latest implementation series:
 
 ```text
-http://127.0.0.1:8765
+1b374c4 Persist accepted fallbacks with Fontconfig
+c876856 Fix Google fallback resolution for presentations
+23a0473 Add live Google Fonts installation
+1d8e3f2 Expand resolution CdC test coverage
+7c95aad Add selected GUI font actions
+04ae6a5 Add GUI resolution workflow
+79185be Add manual font import CLI
+9095ab7 Add multi-source font resolution
 ```
 
-Technos :
-
-* FastAPI ;
-* Jinja2 ;
-* HTMX ;
-* pas de framework JS lourd.
-
-Écrans :
-
-1. Choix dossier + profondeur.
-2. Lancement scan.
-3. Tableau des polices :
-
-   * police ;
-   * statut exact ;
-   * substitution ;
-   * fichiers ;
-   * recommandation ;
-   * bouton installer si possible.
-4. Page licence :
-
-   * police ;
-   * source ;
-   * backend ;
-   * texte de licence capturé ;
-   * bouton accepter/refuser.
-5. Page rapport.
-
-Le front-end doit appeler les mêmes fonctions Python que la CLI.
-
----
-
-## Sorties attendues
-
-### Exemple `scan`
+The worktree should be clean after each completed development step:
 
 ```bash
-pptx-font-resolver scan ./slides --depth 2
+rtk git status --short --branch
 ```
 
-Sortie :
+## Current Gaps and Recommended Next Work
 
-```text
-PPTX analysés : 42
-Polices uniques : 18
-Polices manquantes exactes : 7
-Polices embarquées détectées : 2
-Polices résolubles via Fontist : 3
-```
+High priority:
 
-### Exemple `fonts`
+- Add GUI management for accepted Fontconfig fallbacks:
+  - list all aliases managed by the tool;
+  - remove an alias;
+  - update an alias;
+  - run `fc-cache -f`;
+  - rescan/refresh the table.
+- Add CLI equivalents:
+  - `list-fallbacks`;
+  - `remove-fallback`;
+  - maybe `clear-fallbacks`.
+- Decide whether `Ignore` should remain GUI-session-only or be persisted in a
+  user config file.
+- Add documentation to README for the new fallback workflow.
+
+Medium priority:
+
+- Add a real end-to-end GUI test for `Resolve all` on generated fixtures.
+- Add a GUI test around `Install via Google Fonts` with mocked download.
+- Add more curated mappings for real proprietary or embedded-subset family
+  names found in `~/CNRS/Presentations`.
+- Add import/export of resolution decisions so a reviewed folder can be resumed.
+- Improve report output to include accepted Fontconfig aliases.
+- Add a safer UI warning for high-risk symbol-font substitutions before allowing
+  fallback acceptance.
+
+Optional/future:
+
+- Build a real TUI if still needed. A Textual app would be a new entry point.
+- Implement a cache/index if repeated huge-folder scans become too slow.
+- Add LibreOffice integration tests:
+  - open a presentation;
+  - render or save;
+  - enable font embedding;
+  - inspect the saved PPTX for embedded font entries.
+- Add a `loffice` helper workflow for "resave with embedded fonts" once the
+  Fontconfig fallback policy is accepted.
+
+## Known Design Decisions
+
+- Keep Fontconfig aliasing separate from document rewriting.
+- Prefer user-level files over system-level config.
+- Prefer official/open font sources over scraping.
+- Treat metric-compatible and visual substitutes as different risk classes.
+- Keep symbol fonts conservative and high risk unless exact fonts are available.
+- Avoid long Fontist probes in GUI `Resolve all`; use explicit Fontist actions
+  where the user selected a font.
+- Use Google Fonts for installable open fonts and curated visual substitutes,
+  not as a universal answer for proprietary family names.
+
+## If You Resume From Here
+
+Recommended first commands:
 
 ```bash
-pptx-font-resolver fonts ./slides --all-fonts --show-files
+rtk git status --short --branch
+rtk git log --oneline -8
+rtk .venv/bin/python -m pytest -q
 ```
 
-Sortie :
+If the user asks about the GUI:
 
-```text
-Aptos
-  statut exact : installée
-  fc-match     : /home/jeff/.fontist/fonts/aptos/Aptos.ttf
-  fichiers     : 4
-
-Calibri
-  statut exact      : non installée
-  substitution      : Carlito
-  fallback métrique : Carlito
-  fichiers          : 10
-  recommandation    : importer police exacte ou accepter fallback métrique
-
-MS PGothic
-  statut exact   : non installée
-  substitution   : Noto Sans CJK JP
-  fontist        : disponible, licence requise
-  fichiers       : 1
-  recommandation : installer via Fontist après acceptation licence
+```bash
+rtk .venv/bin/pptx-font-resolver-gui
 ```
 
----
+If the user asks about `~/CNRS/Presentations`:
 
-## Tests unitaires
+```bash
+rtk .venv/bin/pptx-font-resolver resolve ~/CNRS/Presentations --provider google --format table --jobs 1
+```
 
-Créer des tests pour :
+If the user asks whether a fallback is now active:
 
-1. Parcours récursif avec profondeur.
-2. Ignorer les fichiers non `.pptx`.
-3. Gérer un `.pptx` invalide sans crash.
-4. Extraire `typeface="Calibri"` depuis un XML minimal.
-5. Résoudre `+mn-lt` via `theme.xml`.
-6. Détecter une police embarquée fictive dans `ppt/fonts/`.
-7. Distinguer police exacte et substitution Fontconfig.
-8. Produire JSON valide.
-9. Produire CSV valide.
-10. Ne pas appeler `fontist install --accept-all-licenses` sans validation explicite.
+```bash
+rtk fc-match "Futura PT Bold"
+rtk sed -n '1,220p' ~/.config/fontconfig/conf.d/90-pptx-font-resolver.conf
+```
 
-Créer quelques PPTX de test minimalistes en générant des ZIP contenant les XML nécessaires, plutôt que dépendre de vrais fichiers Office lourds.
-
----
-
-## Critères d’acceptation MVP
-
-Le MVP est accepté si :
-
-* `pptx-font-resolver scan ./dossier --depth infinite` fonctionne.
-* `pptx-font-resolver fonts ./dossier --all-fonts` liste toutes les polices associées aux présentations trouvées.
-* La sortie distingue clairement :
-
-  * installée exactement ;
-  * non installée ;
-  * substituée par Fontconfig ;
-  * embarquée ;
-  * fallback métrique connu.
-* Le scan ne décompresse jamais tout le PPTX sur disque.
-* Le scan est parallèle.
-* Les erreurs de fichiers corrompus sont rapportées sans interrompre l’analyse.
-* Le rapport JSON est exploitable par un front-end.
-* L’intégration Fontist permet au moins :
-
-  * probe d’une police ;
-  * détection licence requise ;
-  * installation après acceptation explicite.
-* Aucune police propriétaire n’est installée sans validation explicite.
-
----
-
-## Priorités de développement
-
-### Phase 1 — cœur scanner
-
-* walk récursif profondeur ;
-* lecture ZIP ;
-* extraction `typeface`;
-* résolution thème ;
-* agrégation par document et par police ;
-* sortie table/json.
-
-### Phase 2 — diagnostic Fontconfig
-
-* `fc-match`;
-* détection exact/substitution ;
-* table fallback métrique ;
-* commande `fonts`.
-
-### Phase 3 — cache SQLite
-
-* index documents ;
-* invalidation par size + mtime_ns ;
-* option `--refresh`.
-
-### Phase 4 — Fontist
-
-* probe ;
-* licence requise ;
-* installation guidée ;
-* fc-cache ;
-* vérification post-installation.
-
-### Phase 5 — rapports
-
-* CSV ;
-* Markdown ;
-* HTML statique.
-
-### Phase 6 — front-end local
-
-* FastAPI + HTMX ;
-* scan ;
-* tableau ;
-* install guidée ;
-* affichage licence.
-
----
-
-## Remarques importantes
-
-Le but n’est pas de garantir un rendu PowerPoint identique à 100 %. Le but est de réduire fortement les écarts LibreOffice/PowerPoint en identifiant et installant proprement les polices manquantes, ou en signalant les substitutions à risque.
-
-Les substitutions métriques comme Carlito pour Calibri ou Caladea pour Cambria doivent être présentées comme des fallback de compatibilité, pas comme des équivalents parfaits.
-
-L’outil doit être sobre, robuste, rapide, et utilisable en ligne de commande sur un gros dossier de présentations.
-
+If you change code, run validation, commit, and push.
