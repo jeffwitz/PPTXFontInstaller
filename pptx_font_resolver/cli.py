@@ -640,16 +640,7 @@ def _install_missing_from_resolution(
         },
         key=str.casefold,
     )
-    google_families = tuple(
-        sorted(
-            {
-                family
-                for family, source, _package, _command in rows
-                if source == "google-fonts"
-            },
-            key=str.casefold,
-        )
-    )
+    google_families = _google_install_families(rows)
     if not apt_packages and not google_families:
         console.print("[yellow]Aucune action exécutable dans les recommandations.[/yellow]")
         return
@@ -693,6 +684,20 @@ def _resolution_install_actions(
             )
         )
     return rows
+
+
+def _google_install_families(
+    rows: list[tuple[str, str, str, tuple[str, ...] | None]],
+) -> tuple[str, ...]:
+    families: set[str] = set()
+    for family, source, _package, command in rows:
+        if source != "google-fonts":
+            continue
+        if command and len(command) >= 3 and command[-2] == "install-google-font":
+            families.add(command[-1])
+        else:
+            families.add(family)
+    return tuple(sorted(families, key=str.casefold))
 
 
 def _print_resolution_install_actions(

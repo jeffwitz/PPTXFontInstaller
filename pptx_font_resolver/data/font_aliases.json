@@ -58,5 +58,40 @@
       {"family": "Arimo"},
       {"family": "Noto Sans"}
     ]
+  },
+  "Futura PT": {
+    "manual": {"note": "Commercial Futura PT family. Manual import is required for exact rendering."},
+    "visual_substitute": [
+      {"family": "Montserrat", "source": "google-fonts", "license": "OFL-1.1", "confidence": 0.58},
+      {"family": "Jost", "source": "google-fonts", "license": "OFL-1.1"}
+    ]
+  },
+  "Futura PT Bold": {
+    "manual": {"note": "Commercial Futura PT family. Manual import is required for exact rendering."},
+    "visual_substitute": [
+      {"family": "Montserrat", "source": "google-fonts", "license": "OFL-1.1", "confidence": 0.58},
+      {"family": "Jost", "source": "google-fonts", "license": "OFL-1.1"}
+    ]
+  },
+  "Futura PT Demi": {
+    "manual": {"note": "Commercial Futura PT family. Manual import is required for exact rendering."},
+    "visual_substitute": [
+      {"family": "Montserrat", "source": "google-fonts", "license": "OFL-1.1", "confidence": 0.58},
+      {"family": "Jost", "source": "google-fonts", "license": "OFL-1.1"}
+    ]
+  },
+  "ElsevierGulliver": {
+    "manual": {"note": "Elsevier Gulliver is a proprietary publication font. Manual import is required for exact rendering."},
+    "visual_substitute": [
+      {"family": "Source Serif 4", "source": "google-fonts", "license": "OFL-1.1", "confidence": 0.58},
+      {"family": "Merriweather", "source": "google-fonts", "license": "OFL-1.1"}
+    ]
+  },
+  "LegacySans-Bold": {
+    "manual": {"note": "LegacySans appears to be a document-specific or proprietary font. Manual import is required for exact rendering."},
+    "visual_substitute": [
+      {"family": "Source Sans 3", "source": "google-fonts", "license": "OFL-1.1", "confidence": 0.58},
+      {"family": "Noto Sans", "source": "google-fonts", "license": "OFL-1.1"}
+    ]
   }
 }

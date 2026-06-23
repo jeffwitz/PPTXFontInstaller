@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+
 from pptx_font_resolver.fontist_backend import FontistBackend, output_mentions_license
 
 
@@ -50,3 +52,16 @@ def test_install_adds_license_acceptance_only_when_explicit(monkeypatch):
 def test_output_mentions_license_detects_acceptance_prompt():
     assert output_mentions_license("License agreement must be accepted") is True
     assert output_mentions_license("Font not found") is False
+
+
+def test_fontist_probe_timeout_returns_unavailable(monkeypatch):
+    def timeout(args, **kwargs):
+        raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+
+    monkeypatch.setattr("subprocess.run", timeout)
+
+    result = FontistBackend().probe_install("Slow Font", timeout=0.01)
+
+    assert result.available is False
+    assert result.returncode == 124
+    assert "timed out" in result.stderr

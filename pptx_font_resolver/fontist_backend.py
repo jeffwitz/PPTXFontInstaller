@@ -36,13 +36,14 @@ def output_mentions_license(text: str) -> bool:
 
 
 class FontistBackend:
-    def probe_install(self, font_name: str) -> FontistProbeResult:
+    def probe_install(self, font_name: str, *, timeout: float = 2.0) -> FontistProbeResult:
         try:
             result = subprocess.run(
                 ["fontist", "list", font_name],
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=timeout,
             )
         except FileNotFoundError as exc:
             return FontistProbeResult(
@@ -53,6 +54,16 @@ class FontistBackend:
                 stdout="",
                 stderr=f"fontist command not found: {exc.filename}",
                 returncode=127,
+            )
+        except subprocess.TimeoutExpired:
+            return FontistProbeResult(
+                font_name=font_name,
+                available=False,
+                installed=False,
+                license_required=False,
+                stdout="",
+                stderr=f"fontist list timed out after {timeout:g}s",
+                returncode=124,
             )
         combined = f"{result.stdout}\n{result.stderr}".casefold()
         unavailable = (

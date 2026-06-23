@@ -40,6 +40,8 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
   hints, resolution report formats, and CLI `resolve` filters.
 - Live Google Fonts lookup and `install-google-font` support, with GUI
   installation for selected Google Fonts recommendations.
+- Google Fonts visual fallbacks for Futura PT, Elsevier Gulliver, LegacySans,
+  and generated AdvOT subset names found in presentation decks.
 
 ### Changed
 
@@ -59,3 +61,6 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
   exact installed fonts for `--all-fonts`, and keeps `--only-missing` strict.
 - Unknown font families are no longer classified as manual imports unless they
   are present in the curated font data.
+- GUI `Resolve all` no longer waits on live Fontist probes; it uses local,
+  apt, Google Fonts, and curated fallback data so large folders resolve quickly.
+- Fontist availability probes now time out instead of blocking a resolution run.

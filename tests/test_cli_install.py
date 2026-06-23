@@ -5,6 +5,7 @@ import inspect
 from pptx_font_resolver.cli import (
     _filter_font_summaries,
     _fontist_unavailable_detail,
+    _google_install_families,
     _install_choice,
     _install_confirm_message,
     _install_single_font,
@@ -146,3 +147,23 @@ def test_filter_font_summaries_defaults_to_problematic_fonts():
         only_missing=False,
         all_fonts=True,
     ) == (installed_clean, installed_low, missing)
+
+
+def test_google_install_families_uses_recommended_family_from_command():
+    rows = [
+        (
+            "Futura PT Bold",
+            "google-fonts",
+            "",
+            ("pptx-font-resolver", "install-google-font", "Montserrat"),
+        ),
+        (
+            "Futura PT Demi",
+            "google-fonts",
+            "",
+            ("pptx-font-resolver", "install-google-font", "Montserrat"),
+        ),
+        ("LegacySans-Bold", "google-fonts", "", None),
+    ]
+
+    assert _google_install_families(rows) == ("LegacySans-Bold", "Montserrat")

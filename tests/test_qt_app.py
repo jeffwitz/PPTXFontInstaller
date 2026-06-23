@@ -316,7 +316,7 @@ def test_google_fonts_candidate_requires_exact_google_source():
         requested_family="Merriweather",
         provided_family="Merriweather",
         source="google-fonts",
-        relation="exact",
+        relation="visual-substitute",
         installable=True,
         confidence=0.86,
     )
@@ -325,12 +325,34 @@ def test_google_fonts_candidate_requires_exact_google_source():
         exact_installed=False,
         candidates=(google,),
         recommended_candidate=google,
-        recommended_action="install_google_font",
-        risk_level="low",
+        recommended_action="use_visual_fallback",
+        risk_level="medium",
         notes=(),
     )
 
     assert google_fonts_candidate(resolution) == google
+
+
+def test_google_fonts_candidate_requires_installable_candidate():
+    google = FontCandidate(
+        requested_family="Futura PT Bold",
+        provided_family="Montserrat",
+        source="google-fonts",
+        relation="visual-substitute",
+        installable=False,
+        confidence=0.86,
+    )
+    resolution = FontResolution(
+        requested_family="Futura PT Bold",
+        exact_installed=False,
+        candidates=(google,),
+        recommended_candidate=google,
+        recommended_action="use_visual_fallback",
+        risk_level="medium",
+        notes=(),
+    )
+
+    assert google_fonts_candidate(resolution) is None
 
 
 def test_summary_text_counts_high_risk_and_missing_fonts(tmp_path):

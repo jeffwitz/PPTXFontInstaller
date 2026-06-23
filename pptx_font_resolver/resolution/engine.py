@@ -118,14 +118,17 @@ def default_engine(
     provider: str = "all",
     distro: str = "debian",
     accept_license: bool = False,
+    include_fontist: bool = True,
 ) -> FontResolutionEngine:
     providers: list[FontProvider] = [LocalFontProvider()]
-    if provider in {"fontist", "all"}:
+    if include_fontist and provider in {"fontist", "all"}:
         providers.append(FontistProvider(accept_license=accept_license))
     if provider in {"apt", "all"}:
         providers.append(DistroPackageProvider(distro=distro))
     if provider in {"google", "all"}:
         providers.append(GoogleFontsProvider())
+    if provider == "google":
+        providers.append(CuratedFallbackProvider(allowed_sources=frozenset({"google-fonts"})))
     if provider in {"manual", "all"}:
         providers.append(CuratedFallbackProvider())
         providers.append(FontconfigFallbackProvider())
@@ -145,9 +148,10 @@ def _recommend_candidate(
         ("google-fonts", "exact"): 2,
         ("distro-package", "metric-compatible"): 3,
         ("curated", "metric-compatible"): 4,
-        ("manual", "exact"): 5,
-        ("curated", "visual-substitute"): 6,
-        ("fontconfig", "generic"): 7,
+        ("google-fonts", "visual-substitute"): 5,
+        ("manual", "exact"): 6,
+        ("curated", "visual-substitute"): 7,
+        ("fontconfig", "generic"): 8,
     }
     return min(
         candidates,

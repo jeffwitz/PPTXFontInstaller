@@ -50,6 +50,17 @@ def test_google_fonts_provider_live_lookup(monkeypatch):
     )
 
 
+def test_google_fonts_provider_skips_live_lookup_for_curated_alias(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "pptx_font_resolver.resolution.providers.lookup_google_font",
+        lambda family, timeout: calls.append(family),
+    )
+
+    assert GoogleFontsProvider().candidates_for("Futura PT Bold") == ()
+    assert calls == []
+
+
 def test_install_google_font_dry_run_uses_download_targets(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "pptx_font_resolver.resolution.google_fonts.lookup_google_font",

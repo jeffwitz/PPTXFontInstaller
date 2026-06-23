@@ -135,7 +135,7 @@ class GoogleFontsProvider:
             provided_family = entry["family"]
             license_hint = entry.get("license")
             url = entry.get("url")
-        elif self.live_lookup:
+        elif self.live_lookup and not _has_curated_rule(family):
             info = lookup_google_font(family, timeout=self.timeout)
             if info is None:
                 return ()
@@ -162,21 +162,34 @@ class GoogleFontsProvider:
 
 @dataclass(frozen=True)
 class CuratedFallbackProvider:
+    allowed_sources: frozenset[str] | None = None
     name: str = "curated"
 
     def candidates_for(self, family: str) -> tuple[FontCandidate, ...]:
         match = find_family_entry(load_json("font_aliases.json"), family)
+        if match is None and normalize_family(family).startswith("advot"):
+            return tuple(
+                candidate
+                for candidate in (
+                    _google_visual_candidate(family, "Noto Sans", confidence=0.35),
+                    _google_visual_candidate(family, "Source Sans 3", confidence=0.32),
+                )
+                if self._source_allowed(candidate.source)
+            )
         if match is None:
             return ()
         requested, entry = match
         candidates: list[FontCandidate] = []
         for item in entry.get("metric_compatible", []):
+            source = item.get("source", "curated")
+            if not self._source_allowed(source):
+                continue
             package = item.get("package")
             candidates.append(
                 FontCandidate(
                     requested_family=requested,
                     provided_family=item["family"],
-                    source=item.get("source", "curated"),
+                    source=source,
                     relation="metric-compatible",
                     installable=bool(package),
                     confidence=0.82,
@@ -188,19 +201,27 @@ class CuratedFallbackProvider:
                 )
             )
         for item in entry.get("visual_substitute", []):
+            source = item.get("source", "curated")
+            if not self._source_allowed(source):
+                continue
+            installable = source == "google-fonts" and not _installed_family(item["family"])
             candidates.append(
                 FontCandidate(
                     requested_family=requested,
                     provided_family=item["family"],
-                    source=item.get("source", "curated"),
+                    source=source,
                     relation="visual-substitute",
-                    installable=False,
-                    confidence=0.55,
+                    installable=installable,
+                    confidence=item.get("confidence", 0.55),
+                    install_command=("pptx-font-resolver", "install-google-font", item["family"])
+                    if installable
+                    else None,
+                    license_hint=item.get("license"),
                     warning="visual substitute only; layout metrics are not guaranteed",
                 )
             )
         manual = entry.get("manual")
-        if manual:
+        if manual and self._source_allowed("manual"):
             candidates.append(
                 FontCandidate(
                     requested_family=requested,
@@ -214,6 +235,45 @@ class CuratedFallbackProvider:
                 )
             )
         return tuple(candidates)
+
+    def _source_allowed(self, source: str) -> bool:
+        return self.allowed_sources is None or source in self.allowed_sources
+
+
+def _google_visual_candidate(
+    requested_family: str,
+    provided_family: str,
+    *,
+    confidence: float,
+) -> FontCandidate:
+    installable = not _installed_family(provided_family)
+    return FontCandidate(
+        requested_family=requested_family,
+        provided_family=provided_family,
+        source="google-fonts",
+        relation="visual-substitute",
+        installable=installable,
+        confidence=confidence,
+        install_command=("pptx-font-resolver", "install-google-font", provided_family)
+        if installable
+        else None,
+        license_hint="OFL-1.1",
+        warning="generated/subset font name; Google Fonts visual substitute only",
+    )
+
+
+def _installed_family(family: str) -> bool:
+    try:
+        return normalize_family(family) in fontconfig.installed_families()
+    except Exception:
+        return False
+
+
+def _has_curated_rule(family: str) -> bool:
+    return (
+        find_family_entry(load_json("font_aliases.json"), family) is not None
+        or normalize_family(family).startswith("advot")
+    )
 
 
 @dataclass(frozen=True)

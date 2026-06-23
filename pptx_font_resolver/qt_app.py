@@ -160,7 +160,11 @@ def google_fonts_candidate(resolution: FontResolution):
     candidate = resolution.recommended_candidate
     if candidate is None:
         return None
-    if candidate.source != "google-fonts" or candidate.relation != "exact":
+    if candidate.source != "google-fonts":
+        return None
+    if candidate.relation not in {"exact", "visual-substitute"}:
+        return None
+    if not candidate.installable:
         return None
     return candidate
 
@@ -370,8 +374,12 @@ def build_main_window(qt: dict[str, Any]):
 
         def run(self) -> None:
             try:
-                self.progress.emit("Resolving fonts with local, Fontist, apt, and fallback data...")
-                engine = default_engine(provider="all", accept_license=False)
+                self.progress.emit("Resolving fonts with local, apt, Google, and fallback data...")
+                engine = default_engine(
+                    provider="all",
+                    accept_license=False,
+                    include_fontist=False,
+                )
                 report = engine.resolve_many(self.families, scanned_files=self.scanned_files)
                 self.finished.emit(report)
             except Exception as exc:
@@ -1214,6 +1222,16 @@ def build_main_window(qt: dict[str, Any]):
                 return
             super().closeEvent(event)
 
+        def stop_running_workers(self) -> None:
+            for worker in (self.worker, self.install_worker, self.resolve_worker):
+                if worker is None or not worker.isRunning():
+                    continue
+                worker.requestInterruption()
+                worker.quit()
+                if not worker.wait(2000):
+                    worker.terminate()
+                    worker.wait(2000)
+
         def export_report(self, format_name: str) -> None:
             if self.analysis is None:
                 return
@@ -1262,6 +1280,7 @@ def main() -> None:
     MainWindow = build_main_window(qt)
     app = QApplication(sys.argv)
     window = MainWindow()
+    app.aboutToQuit.connect(window.stop_running_workers)
     window.show()
     window.raise_()
     window.activateWindow()
