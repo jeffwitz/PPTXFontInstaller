@@ -227,10 +227,9 @@ class ManualImportProvider:
     name: str = "manual"
 
     def candidates_for(self, family: str) -> tuple[FontCandidate, ...]:
-        if is_symbol_font(family):
-            warning = "Symbol font: automatic substitution may alter glyph semantics."
-        else:
-            warning = "Import manually if you have a licensed font file."
+        if not is_symbol_font(family):
+            return ()
+        warning = "Symbol font: automatic substitution may alter glyph semantics."
         return (
             FontCandidate(
                 requested_family=family,

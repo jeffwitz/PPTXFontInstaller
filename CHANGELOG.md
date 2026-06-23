@@ -36,6 +36,8 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
   recommendations` actions backed by the multi-source resolution engine.
 - GUI selected-font actions for Fontist installs, single system-package installs,
   fallback acceptance, and ignored recommendations.
+- CdC test coverage for resolution-engine core cases, distro package provider
+  hints, resolution report formats, and CLI `resolve` filters.
 
 ### Changed
 
@@ -53,3 +55,5 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
   count columns.
 - The legacy `fonts` command now shows problematic fonts by default, reserves
   exact installed fonts for `--all-fonts`, and keeps `--only-missing` strict.
+- Unknown font families are no longer classified as manual imports unless they
+  are present in the curated font data.
