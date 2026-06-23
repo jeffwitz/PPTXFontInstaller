@@ -13,6 +13,7 @@ from .analysis import analyze_path
 from .fontist_backend import FontistBackend, FontistInstallResult, output_mentions_license
 from .report import to_csv, to_json, to_markdown, write_report
 from .resolution import default_engine
+from .resolution.fontconfig_aliases import FontconfigAliasError, apply_fontconfig_alias
 from .resolution.google_fonts import (
     GoogleFontInstallResult,
     GoogleFontsError,
@@ -276,6 +277,48 @@ def install_google_font(
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
     _print_google_install_report(result)
+
+
+@app.command("accept-fallback")
+def accept_fallback(
+    requested_family: Annotated[
+        str,
+        typer.Argument(help="Font family requested by the document."),
+    ],
+    fallback_family: Annotated[
+        str,
+        typer.Argument(help="Installed family to use through Fontconfig."),
+    ],
+    relation: Annotated[
+        str,
+        typer.Option(help="Fallback relation: metric-compatible, visual-substitute, or generic."),
+    ] = "visual-substitute",
+    source: Annotated[
+        str,
+        typer.Option(help="Recommendation source, for traceability."),
+    ] = "manual",
+    refresh_cache: Annotated[
+        bool,
+        typer.Option("--refresh-cache/--no-refresh-cache", help="Run fc-cache after writing."),
+    ] = True,
+) -> None:
+    try:
+        result = apply_fontconfig_alias(
+            requested_family,
+            fallback_family,
+            relation=relation,
+            source=source,
+            refresh_cache=refresh_cache,
+        )
+    except FontconfigAliasError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    console.print(
+        f"[green]Fontconfig fallback accepted[/green] "
+        f"{result.alias.requested_family} -> {result.alias.fallback_family}"
+    )
+    console.print(f"Config: {result.config_path}")
+    console.print(f"Cache refreshed: {'yes' if result.cache_refreshed else 'no'}")
 
 
 @app.command("install-font")

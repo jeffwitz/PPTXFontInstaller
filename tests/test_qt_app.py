@@ -4,6 +4,7 @@ from pathlib import Path
 
 from pptx_font_resolver.models import FontStatus, FontSummary, ScanResult
 from pptx_font_resolver.qt_app import (
+    accepted_fontconfig_fallbacks,
     fallback_candidate,
     font_row,
     fontist_candidate,
@@ -21,6 +22,7 @@ from pptx_font_resolver.qt_app import (
     summary_text,
     system_package_candidate,
 )
+from pptx_font_resolver.resolution.fontconfig_aliases import FontconfigAlias, FontconfigAliasResult
 from pptx_font_resolver.resolution.models import FontCandidate, FontResolution, ResolutionReport
 
 
@@ -355,6 +357,15 @@ def test_google_fonts_candidate_requires_installable_candidate():
     assert google_fonts_candidate(resolution) is None
 
 
+def test_accepted_fontconfig_fallbacks_uses_persisted_aliases(monkeypatch):
+    class Alias:
+        requested_family = "Futura PT Bold"
+
+    monkeypatch.setattr("pptx_font_resolver.qt_app.load_aliases", lambda: (Alias(),))
+
+    assert accepted_fontconfig_fallbacks() == {"Futura PT Bold"}
+
+
 def test_summary_text_counts_high_risk_and_missing_fonts(tmp_path):
     scan = ScanResult(root=tmp_path, documents=(), errors=())
     font = FontSummary(
@@ -561,6 +572,93 @@ def test_resolution_selection_enables_google_button(monkeypatch, tmp_path):
 
     assert window.install_google_button.isEnabled() is True
     assert window.install_system_button.isEnabled() is False
+
+    window.close()
+    app.processEvents()
+
+
+def test_accept_fallback_writes_fontconfig_alias(monkeypatch, tmp_path):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from pptx_font_resolver.analysis import AnalysisResult
+    from pptx_font_resolver.qt_app import _load_qt_modules, build_main_window
+
+    calls: list[tuple[str, str, str, str]] = []
+
+    def fake_apply(requested_family, fallback_family, *, relation, source):
+        calls.append((requested_family, fallback_family, relation, source))
+        return FontconfigAliasResult(
+            alias=FontconfigAlias(
+                requested_family=requested_family,
+                fallback_family=fallback_family,
+                relation=relation,
+                source=source,
+            ),
+            store_path=tmp_path / "aliases.json",
+            config_path=tmp_path / "90-pptx-font-resolver.conf",
+            cache_refreshed=True,
+        )
+
+    monkeypatch.setattr("pptx_font_resolver.qt_app.load_aliases", lambda: ())
+    monkeypatch.setattr("pptx_font_resolver.qt_app.apply_fontconfig_alias", fake_apply)
+
+    qt = _load_qt_modules()
+    QApplication = qt["QApplication"]
+    app = QApplication.instance() or QApplication([])
+    MainWindow = build_main_window(qt)
+    window = MainWindow()
+    font = FontSummary(
+        family="Futura PT Bold",
+        occurrences=1,
+        files=(tmp_path / "deck.pptx",),
+        embedded_in=(),
+        status=FontStatus("Futura PT Bold", exact_installed=False),
+        metric_fallbacks=(),
+        risk_level="medium",
+        risk_reason="missing exact font",
+        recommendation="use visual fallback",
+    )
+    resolution = FontResolution(
+        requested_family="Futura PT Bold",
+        exact_installed=False,
+        candidates=(),
+        recommended_candidate=FontCandidate(
+            requested_family="Futura PT Bold",
+            provided_family="Montserrat",
+            source="google-fonts",
+            relation="visual-substitute",
+            installable=False,
+            confidence=0.86,
+        ),
+        recommended_action="use_visual_fallback",
+        risk_level="medium",
+        notes=(),
+    )
+    window.analysis = AnalysisResult(
+        scan=ScanResult(root=tmp_path, documents=(), errors=()),
+        fonts=(font,),
+    )
+    window.resolution_report = ResolutionReport(
+        scanned_files=1,
+        requested_fonts=1,
+        missing_fonts=1,
+        resolved_exact=0,
+        resolved_metric=0,
+        manual_required=0,
+        unsafe=0,
+        resolutions=(resolution,),
+    )
+
+    window.populate_resolution_table()
+    window.table.selectRow(0)
+    app.processEvents()
+    window.accept_selected_fallback()
+
+    assert calls == [
+        ("Futura PT Bold", "Montserrat", "visual-substitute", "google-fonts")
+    ]
+    assert "Futura PT Bold" in window.accepted_fallbacks
+    assert "Config:" in window.details.toPlainText()
 
     window.close()
     app.processEvents()

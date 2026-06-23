@@ -10,6 +10,11 @@ from .fontist_backend import FontistBackend
 from .models import FontSummary
 from .report import to_csv, to_json, to_markdown, write_report
 from .resolution import default_engine
+from .resolution.fontconfig_aliases import (
+    FontconfigAliasError,
+    apply_fontconfig_alias,
+    load_aliases,
+)
 from .resolution.google_fonts import GoogleFontsError, install_google_font
 from .resolution.manual_import import ManualImportError, import_font_path
 from .resolution.models import FontResolution, ResolutionReport
@@ -238,6 +243,13 @@ def install_result_summary(unavailable: list[str], failures: list[str]) -> str:
     return "\n".join(lines)
 
 
+def accepted_fontconfig_fallbacks() -> set[str]:
+    try:
+        return {alias.requested_family for alias in load_aliases()}
+    except FontconfigAliasError:
+        return set()
+
+
 def _load_qt_modules() -> dict[str, Any]:
     try:
         from PySide6 import QtCore, QtGui, QtWidgets
@@ -425,7 +437,7 @@ def build_main_window(qt: dict[str, Any]):
             self.install_statuses: dict[str, str] = {}
             self.install_messages: dict[str, str] = {}
             self.pending_install_summary: str | None = None
-            self.accepted_fallbacks: set[str] = set()
+            self.accepted_fallbacks: set[str] = accepted_fontconfig_fallbacks()
             self.ignored_fonts: set[str] = set()
 
             self.path_edit = QLineEdit()
@@ -797,7 +809,7 @@ def build_main_window(qt: dict[str, Any]):
                 tooltip = "Ignored for this GUI session."
             elif resolution.requested_family in self.accepted_fallbacks:
                 color = QColor("#d9f2df")
-                tooltip = "Fallback accepted for this GUI session."
+                tooltip = "Fallback accepted through user Fontconfig aliases."
             elif resolution.exact_installed:
                 color = QColor("#d9f2df")
                 tooltip = "Exact font installed."
@@ -996,11 +1008,23 @@ def build_main_window(qt: dict[str, Any]):
                     "No fallback recommendation is available for this font.",
                 )
                 return
+            try:
+                result = apply_fontconfig_alias(
+                    resolution.requested_family,
+                    candidate.provided_family,
+                    relation=candidate.relation,
+                    source=candidate.source,
+                )
+            except FontconfigAliasError as exc:
+                QMessageBox.critical(self, "Accept fallback failed", str(exc))
+                return
             self.accepted_fallbacks.add(resolution.requested_family)
             self.ignored_fonts.discard(resolution.requested_family)
             self.details.setPlainText(
-                f"Accepted fallback for {resolution.requested_family}: "
-                f"{candidate.provided_family} ({candidate.relation})."
+                f"Accepted Fontconfig fallback for {resolution.requested_family}: "
+                f"{candidate.provided_family} ({candidate.relation}).\n"
+                f"Config: {result.config_path}\n"
+                f"Cache refreshed: {'yes' if result.cache_refreshed else 'no'}"
             )
             self.populate_resolution_table()
 

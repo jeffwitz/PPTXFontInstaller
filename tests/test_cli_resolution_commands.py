@@ -6,6 +6,10 @@ from conftest import make_pptx, slide_xml
 from typer.testing import CliRunner
 
 from pptx_font_resolver.cli import app
+from pptx_font_resolver.resolution.fontconfig_aliases import (
+    FontconfigAlias,
+    FontconfigAliasResult,
+)
 from pptx_font_resolver.resolution.models import FontCandidate, FontResolution, ResolutionReport
 from pptx_font_resolver.resolution.report import to_csv, to_json, to_markdown
 
@@ -73,6 +77,46 @@ def test_cli_install_missing_apt_dry_run_does_not_execute(tmp_path, monkeypatch)
     assert "fonts-crosextra-carlito" in result.output
     assert "Aucune commande exécutée" in result.output
     assert calls == []
+
+
+def test_cli_accept_fallback_writes_fontconfig_alias(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_apply(requested_family, fallback_family, *, relation, source, refresh_cache):
+        calls.append((requested_family, fallback_family, relation, source, refresh_cache))
+        return FontconfigAliasResult(
+            alias=FontconfigAlias(
+                requested_family=requested_family,
+                fallback_family=fallback_family,
+                relation=relation,
+                source=source,
+            ),
+            store_path=tmp_path / "aliases.json",
+            config_path=tmp_path / "90-pptx-font-resolver.conf",
+            cache_refreshed=refresh_cache,
+        )
+
+    monkeypatch.setattr("pptx_font_resolver.cli.apply_fontconfig_alias", fake_apply)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "accept-fallback",
+            "Futura PT Bold",
+            "Montserrat",
+            "--relation",
+            "visual-substitute",
+            "--source",
+            "google-fonts",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [
+        ("Futura PT Bold", "Montserrat", "visual-substitute", "google-fonts", True)
+    ]
+    assert "Futura PT Bold -> Montserrat" in result.output
+    assert "Cache refreshed: yes" in result.output
 
 
 def test_resolution_reports_include_cdc_fields():
