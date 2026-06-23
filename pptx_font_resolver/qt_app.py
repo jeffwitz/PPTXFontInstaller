@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,18 @@ from .analysis import AnalysisResult
 from .fontist_backend import FontistBackend
 from .models import FontSummary
 from .report import to_csv, to_json, to_markdown, write_report
+from .resolution import default_engine
+from .resolution.manual_import import ManualImportError, import_font_path
+from .resolution.models import FontResolution, ResolutionReport
+from .resolution.report import (
+    to_csv as resolution_to_csv,
+)
+from .resolution.report import (
+    to_json as resolution_to_json,
+)
+from .resolution.report import (
+    to_markdown as resolution_to_markdown,
+)
 from .resolver import build_font_report
 from .scanner import default_jobs, scan_folder
 
@@ -32,6 +45,102 @@ def font_row(font: FontSummary) -> list[str]:
         str(len(font.files)),
         font.recommendation,
     ]
+
+
+def resolution_row(
+    resolution: FontResolution,
+    files_by_family: dict[str, tuple[Path, ...]] | None = None,
+) -> list[str]:
+    candidate = resolution.recommended_candidate
+    fontist_available = any(
+        item.source == "fontist" and item.relation == "exact" for item in resolution.candidates
+    )
+    files = () if files_by_family is None else files_by_family.get(resolution.requested_family, ())
+    return [
+        resolution.requested_family,
+        "yes" if resolution.exact_installed else "no",
+        "yes" if fontist_available else "no",
+        resolution.recommended_action,
+        "" if candidate is None else candidate.provided_family,
+        "" if candidate is None else candidate.relation,
+        "" if candidate is None else candidate.source,
+        resolution.risk_level,
+        str(len(files)),
+    ]
+
+
+def resolution_details_text(
+    resolution: FontResolution,
+    files: tuple[Path, ...] = (),
+) -> str:
+    candidate = resolution.recommended_candidate
+    lines = [
+        f"Font: {resolution.requested_family}",
+        f"Installed exactly: {'yes' if resolution.exact_installed else 'no'}",
+        f"Recommended action: {resolution.recommended_action}",
+        f"Risk: {resolution.risk_level}",
+    ]
+    if candidate is not None:
+        lines.extend(
+            [
+                "",
+                f"Recommended family: {candidate.provided_family}",
+                f"Relation: {candidate.relation}",
+                f"Source: {candidate.source}",
+            ]
+        )
+        if candidate.package_name:
+            lines.append(f"Package: {candidate.package_name}")
+        if candidate.install_command:
+            lines.append(f"Command: {' '.join(candidate.install_command)}")
+        if candidate.license_hint:
+            lines.append(f"License: {candidate.license_hint}")
+        if candidate.warning:
+            lines.append(f"Warning: {candidate.warning}")
+    if resolution.notes:
+        lines.extend(["", "Notes:"])
+        lines.extend(f"- {note}" for note in resolution.notes)
+    if files:
+        lines.extend(["", "Files:"])
+        lines.extend(f"- {path}" for path in files)
+    return "\n".join(lines)
+
+
+def files_by_family(fonts: tuple[FontSummary, ...]) -> dict[str, tuple[Path, ...]]:
+    return {font.family: font.files for font in fonts}
+
+
+def safe_system_packages(report: ResolutionReport) -> tuple[str, ...]:
+    packages: set[str] = set()
+    for resolution in report.resolutions:
+        candidate = resolution.recommended_candidate
+        if candidate is None or candidate.package_name is None:
+            continue
+        if candidate.source != "distro-package":
+            continue
+        if resolution.risk_level == "high":
+            continue
+        if candidate.relation not in {"exact", "metric-compatible"}:
+            continue
+        if resolution.recommended_action not in {
+            "install_distro_package",
+            "install_metric_compatible",
+        }:
+            continue
+        packages.add(candidate.package_name)
+    return tuple(sorted(packages, key=str.casefold))
+
+
+def resolution_report_text(report: ResolutionReport) -> str:
+    return (
+        "Resolution report\n"
+        f"Scanned files: {report.scanned_files}\n"
+        f"Requested fonts: {report.requested_fonts}\n"
+        f"Missing exact fonts: {report.missing_fonts}\n"
+        f"Metric-compatible recommendations: {report.resolved_metric}\n"
+        f"Manual imports required: {report.manual_required}\n"
+        f"Unsafe recommendations: {report.unsafe}"
+    )
 
 
 def summary_text(analysis: AnalysisResult) -> str:
@@ -206,8 +315,27 @@ def build_main_window(qt: dict[str, Any]):
             except Exception as exc:
                 self.failed.emit("Fontist", f"Unexpected install error: {exc}")
 
+    class ResolveWorker(QThread):
+        finished = Signal(object)
+        failed = Signal(str)
+        progress = Signal(str)
+
+        def __init__(self, families: tuple[str, ...], scanned_files: int) -> None:
+            super().__init__()
+            self.families = families
+            self.scanned_files = scanned_files
+
+        def run(self) -> None:
+            try:
+                self.progress.emit("Resolving fonts with local, Fontist, apt, and fallback data...")
+                engine = default_engine(provider="all", accept_license=False)
+                report = engine.resolve_many(self.families, scanned_files=self.scanned_files)
+                self.finished.emit(report)
+            except Exception as exc:
+                self.failed.emit(str(exc))
+
     class MainWindow(QMainWindow):
-        columns = [
+        font_columns = [
             "Install",
             "Font",
             "Risk",
@@ -217,6 +345,18 @@ def build_main_window(qt: dict[str, Any]):
             "Files",
             "Recommendation",
         ]
+        resolution_columns = [
+            "Family",
+            "Installed",
+            "Fontist",
+            "Recommended action",
+            "Recommended family",
+            "Relation",
+            "Source",
+            "Risk",
+            "Files",
+        ]
+        columns = font_columns
 
         def __init__(self) -> None:
             super().__init__()
@@ -225,6 +365,9 @@ def build_main_window(qt: dict[str, Any]):
             self.analysis: AnalysisResult | None = None
             self.worker: ScanWorker | None = None
             self.install_worker: InstallWorker | None = None
+            self.resolve_worker: ResolveWorker | None = None
+            self.resolution_report: ResolutionReport | None = None
+            self.table_mode = "fonts"
             self.updating_install_checks = False
             self.install_unavailable: list[str] = []
             self.install_failures: list[str] = []
@@ -244,6 +387,10 @@ def build_main_window(qt: dict[str, Any]):
             self.scan_button = QPushButton("Scan")
             self.install_button = QPushButton("Install selected")
             self.install_all_button = QPushButton("Install all missing")
+            self.resolve_button = QPushButton("Resolve all")
+            self.explain_button = QPushButton("Explain")
+            self.safe_install_button = QPushButton("Install safe recommendations")
+            self.import_font_button = QPushButton("Import font file")
             self.export_json_button = QPushButton("Export JSON")
             self.export_csv_button = QPushButton("Export CSV")
             self.export_md_button = QPushButton("Export Markdown")
@@ -251,8 +398,8 @@ def build_main_window(qt: dict[str, Any]):
             self.summary = QTextEdit()
             self.summary.setReadOnly(True)
             self.summary.setMaximumHeight(130)
-            self.table = QTableWidget(0, len(self.columns))
-            self.table.setHorizontalHeaderLabels(self.columns)
+            self.table = QTableWidget(0, len(self.font_columns))
+            self.table.setHorizontalHeaderLabels(self.font_columns)
             self.configure_install_header()
             self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
             self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -273,8 +420,12 @@ def build_main_window(qt: dict[str, Any]):
             top.addWidget(self.scan_button)
             top.addWidget(self.install_button)
             top.addWidget(self.install_all_button)
+            top.addWidget(self.resolve_button)
 
             exports = QHBoxLayout()
+            exports.addWidget(self.explain_button)
+            exports.addWidget(self.safe_install_button)
+            exports.addWidget(self.import_font_button)
             exports.addStretch(1)
             exports.addWidget(self.export_json_button)
             exports.addWidget(self.export_csv_button)
@@ -293,9 +444,13 @@ def build_main_window(qt: dict[str, Any]):
 
             self.browse_button.clicked.connect(self.choose_folder)
             self.scan_button.clicked.connect(self.start_scan)
-            self.only_missing.stateChanged.connect(self.populate_table)
+            self.only_missing.stateChanged.connect(self.refresh_current_table)
             self.install_button.clicked.connect(self.install_selected_fonts)
             self.install_all_button.clicked.connect(self.install_all_missing_fonts)
+            self.resolve_button.clicked.connect(self.resolve_all_fonts)
+            self.explain_button.clicked.connect(self.explain_selected_font)
+            self.safe_install_button.clicked.connect(self.install_safe_recommendations)
+            self.import_font_button.clicked.connect(self.import_font_file)
             self.table.itemSelectionChanged.connect(self.show_selected_details)
             self.table.itemChanged.connect(self.sync_install_header_state)
             self.table.horizontalHeader().sectionClicked.connect(
@@ -307,6 +462,10 @@ def build_main_window(qt: dict[str, Any]):
             self._set_export_enabled(False)
             self.install_button.setEnabled(False)
             self.install_all_button.setEnabled(False)
+            self.resolve_button.setEnabled(False)
+            self.explain_button.setEnabled(False)
+            self.safe_install_button.setEnabled(False)
+            self.import_font_button.setEnabled(False)
 
         def configure_install_header(self) -> None:
             item = QTableWidgetItem("Install")
@@ -344,6 +503,8 @@ def build_main_window(qt: dict[str, Any]):
 
         def scan_finished(self, analysis: AnalysisResult) -> None:
             self.analysis = analysis
+            self.resolution_report = None
+            self.table_mode = "fonts"
             text = summary_text(analysis)
             if self.pending_install_summary:
                 text = f"{text}\n\n{self.pending_install_summary}"
@@ -351,6 +512,8 @@ def build_main_window(qt: dict[str, Any]):
             self.summary.setPlainText(text)
             self.populate_table()
             self.scan_button.setEnabled(True)
+            self.resolve_button.setEnabled(True)
+            self.import_font_button.setEnabled(True)
             self._set_export_enabled(True)
 
         def scan_failed(self, message: str) -> None:
@@ -358,9 +521,19 @@ def build_main_window(qt: dict[str, Any]):
             self._set_export_enabled(False)
             QMessageBox.critical(self, "Scan failed", message)
 
+        def refresh_current_table(self) -> None:
+            if self.table_mode == "resolution":
+                self.populate_resolution_table()
+            else:
+                self.populate_table()
+
         def populate_table(self) -> None:
             if self.analysis is None:
                 return
+            self.table_mode = "fonts"
+            self.table.setColumnCount(len(self.font_columns))
+            self.table.setHorizontalHeaderLabels(self.font_columns)
+            self.configure_install_header()
             fonts = self.displayed_fonts()
             self.updating_install_checks = True
             self.table.setRowCount(len(fonts))
@@ -387,10 +560,81 @@ def build_main_window(qt: dict[str, Any]):
             has_missing = bool(self.analysis.missing_fonts)
             self.install_button.setEnabled(has_installable)
             self.install_all_button.setEnabled(has_missing)
+            self.explain_button.setEnabled(False)
+            self.safe_install_button.setEnabled(False)
             self.sync_install_header_state()
 
+        def resolve_all_fonts(self) -> None:
+            if self.analysis is None:
+                return
+            self.resolve_button.setEnabled(False)
+            self.scan_button.setEnabled(False)
+            self.summary.setPlainText("Resolving fonts...")
+            self.resolve_worker = ResolveWorker(
+                self.analysis.scan.unique_fonts,
+                len(self.analysis.scan.documents),
+            )
+            self.resolve_worker.progress.connect(self.scan_progress)
+            self.resolve_worker.finished.connect(self.resolve_finished)
+            self.resolve_worker.failed.connect(self.resolve_failed)
+            self.resolve_worker.start()
+
+        def resolve_finished(self, report: ResolutionReport) -> None:
+            if self.resolve_worker is not None:
+                self.resolve_worker.deleteLater()
+                self.resolve_worker = None
+            self.resolution_report = report
+            self.summary.setPlainText(resolution_report_text(report))
+            self.populate_resolution_table()
+            self.resolve_button.setEnabled(True)
+            self.scan_button.setEnabled(True)
+            self.explain_button.setEnabled(True)
+            self.safe_install_button.setEnabled(bool(safe_system_packages(report)))
+
+        def resolve_failed(self, message: str) -> None:
+            if self.resolve_worker is not None:
+                self.resolve_worker.deleteLater()
+                self.resolve_worker = None
+            self.resolve_button.setEnabled(True)
+            self.scan_button.setEnabled(True)
+            QMessageBox.critical(self, "Resolve failed", message)
+
+        def populate_resolution_table(self) -> None:
+            if self.resolution_report is None:
+                return
+            self.table_mode = "resolution"
+            self.table.setColumnCount(len(self.resolution_columns))
+            self.table.setHorizontalHeaderLabels(self.resolution_columns)
+            resolutions = self.displayed_resolutions()
+            family_files = {} if self.analysis is None else files_by_family(self.analysis.fonts)
+            self.updating_install_checks = True
+            self.table.setRowCount(len(resolutions))
+            for row, resolution in enumerate(resolutions):
+                for column, value in enumerate(resolution_row(resolution, family_files)):
+                    item = QTableWidgetItem(value)
+                    item.setData(Qt.UserRole, resolution)
+                    self.table.setItem(row, column, item)
+                self.apply_resolution_status(row, resolution)
+            self.updating_install_checks = False
+            self.table.resizeRowsToContents()
+            self.install_button.setEnabled(False)
+            self.install_all_button.setEnabled(False)
+            self.explain_button.setEnabled(bool(resolutions))
+            self.safe_install_button.setEnabled(bool(safe_system_packages(self.resolution_report)))
+
+        def displayed_resolutions(self) -> tuple[FontResolution, ...]:
+            if self.resolution_report is None:
+                return ()
+            if not self.only_missing.isChecked():
+                return self.resolution_report.resolutions
+            return tuple(
+                resolution
+                for resolution in self.resolution_report.resolutions
+                if not resolution.exact_installed
+            )
+
         def toggle_all_install_checks(self, section: int) -> None:
-            if section != 0:
+            if self.table_mode != "fonts" or section != 0:
                 return
             header_item = self.table.horizontalHeaderItem(0)
             if header_item is None:
@@ -409,7 +653,7 @@ def build_main_window(qt: dict[str, Any]):
             self.sync_install_header_state()
 
         def sync_install_header_state(self, _item=None) -> None:
-            if self.updating_install_checks:
+            if self.table_mode != "fonts" or self.updating_install_checks:
                 return
             header_item = self.table.horizontalHeaderItem(0)
             if header_item is None:
@@ -468,12 +712,41 @@ def build_main_window(qt: dict[str, Any]):
                     item.setBackground(color)
                     item.setToolTip(tooltip)
 
+        def apply_resolution_status(self, row: int, resolution: FontResolution) -> None:
+            if resolution.exact_installed:
+                color = QColor("#d9f2df")
+                tooltip = "Exact font installed."
+            elif resolution.risk_level == "high":
+                color = QColor("#f8d7da")
+                tooltip = "High-risk font resolution; install or review manually."
+            elif resolution.recommended_candidate is not None:
+                color = QColor("#fff3cd")
+                tooltip = "Recommended fallback or install action available."
+            else:
+                color = QColor("#f8d7da")
+                tooltip = "No automatic resolution available; install manually."
+            for column in range(self.table.columnCount()):
+                item = self.table.item(row, column)
+                if item is not None:
+                    item.setBackground(color)
+                    item.setToolTip(tooltip)
+
         def show_selected_details(self) -> None:
             selected = self.table.selectedItems()
             if not selected:
                 self.details.clear()
                 return
-            font = selected[0].data(Qt.UserRole)
+            payload = selected[0].data(Qt.UserRole)
+            if isinstance(payload, FontResolution):
+                family_files = {} if self.analysis is None else files_by_family(self.analysis.fonts)
+                self.details.setPlainText(
+                    resolution_details_text(
+                        payload,
+                        family_files.get(payload.requested_family, ()),
+                    )
+                )
+                return
+            font = payload
             lines = [
                 f"Font: {font.family}",
                 f"Risk: {font.risk_level} - {font.risk_reason}",
@@ -483,6 +756,85 @@ def build_main_window(qt: dict[str, Any]):
             ]
             lines.extend(f"- {path}" for path in font.files)
             self.details.setPlainText("\n".join(lines))
+
+        def explain_selected_font(self) -> None:
+            selected = self.table.selectedItems()
+            if not selected:
+                QMessageBox.information(self, "Explain", "Select a font row first.")
+                return
+            payload = selected[0].data(Qt.UserRole)
+            if isinstance(payload, FontResolution):
+                resolution = payload
+            else:
+                engine = default_engine(provider="all", accept_license=False)
+                resolution = engine.resolve_family(payload.family)
+            family_files = {} if self.analysis is None else files_by_family(self.analysis.fonts)
+            text = resolution_details_text(
+                resolution,
+                family_files.get(resolution.requested_family, ()),
+            )
+            self.details.setPlainText(text)
+            QMessageBox.information(self, "Font explanation", text)
+
+        def install_safe_recommendations(self) -> None:
+            if self.resolution_report is None:
+                QMessageBox.information(self, "Install recommendations", "Resolve fonts first.")
+                return
+            packages = safe_system_packages(self.resolution_report)
+            if not packages:
+                QMessageBox.information(
+                    self,
+                    "Install recommendations",
+                    "No safe system package recommendations are available.",
+                )
+                return
+            message = QMessageBox(self)
+            message.setWindowTitle("Install system packages")
+            message.setText(
+                "Run sudo apt install for these recommended packages?\n\n"
+                + "\n".join(packages)
+            )
+            yes_button = message.addButton("Yes", QMessageBox.YesRole)
+            no_button = message.addButton("No", QMessageBox.NoRole)
+            message.setDefaultButton(no_button)
+            message.exec()
+            if message.clickedButton() != yes_button:
+                return
+            result = subprocess.run(["sudo", "apt", "install", *packages], check=False)
+            if result.returncode == 0:
+                QMessageBox.information(
+                    self,
+                    "Install recommendations",
+                    "System packages installed. Refreshing scan.",
+                )
+                self.start_scan()
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Install recommendations failed",
+                    f"apt exited with code {result.returncode}",
+                )
+
+        def import_font_file(self) -> None:
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Import font file",
+                "",
+                "Font files (*.ttf *.otf *.ttc)",
+            )
+            if not path:
+                return
+            try:
+                results = import_font_path(Path(path), recursive=False, refresh_cache=True)
+            except ManualImportError as exc:
+                QMessageBox.critical(self, "Import font failed", str(exc))
+                return
+            imported = "\n".join(
+                f"{result.target_path}: {', '.join(result.family_names)}" for result in results
+            )
+            QMessageBox.information(self, "Font imported", imported)
+            if self.analysis is not None:
+                self.start_scan()
 
         def selected_install_fonts(self) -> list[FontSummary]:
             selected: list[FontSummary] = []
@@ -619,7 +971,7 @@ def build_main_window(qt: dict[str, Any]):
         def closeEvent(self, event) -> None:
             running = [
                 worker
-                for worker in (self.worker, self.install_worker)
+                for worker in (self.worker, self.install_worker, self.resolve_worker)
                 if worker is not None and worker.isRunning()
             ]
             if running:
@@ -645,12 +997,20 @@ def build_main_window(qt: dict[str, Any]):
             if not path:
                 return
             output = Path(path)
-            if format_name == "json":
-                content = to_json(self.analysis.scan, self.analysis.fonts)
-            elif format_name == "csv":
-                content = to_csv(self.analysis.fonts)
+            if self.table_mode == "resolution" and self.resolution_report is not None:
+                if format_name == "json":
+                    content = resolution_to_json(self.resolution_report)
+                elif format_name == "csv":
+                    content = resolution_to_csv(self.resolution_report)
+                else:
+                    content = resolution_to_markdown(self.resolution_report)
             else:
-                content = to_markdown(self.analysis.scan, self.analysis.fonts)
+                if format_name == "json":
+                    content = to_json(self.analysis.scan, self.analysis.fonts)
+                elif format_name == "csv":
+                    content = to_csv(self.analysis.fonts)
+                else:
+                    content = to_markdown(self.analysis.scan, self.analysis.fonts)
             write_report(output, content)
 
         def _set_export_enabled(self, enabled: bool) -> None:

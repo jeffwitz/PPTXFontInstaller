@@ -11,8 +11,13 @@ from pptx_font_resolver.qt_app import (
     is_installable_font,
     manual_install_tooltip,
     qt_dependency_message,
+    resolution_details_text,
+    resolution_report_text,
+    resolution_row,
+    safe_system_packages,
     summary_text,
 )
+from pptx_font_resolver.resolution.models import FontCandidate, FontResolution, ResolutionReport
 
 
 def test_qt_dependency_message_mentions_gui_extra():
@@ -138,6 +143,127 @@ def test_font_row_formats_status_and_counts():
     ]
 
 
+def test_resolution_row_formats_cdc_columns(tmp_path):
+    resolution = FontResolution(
+        requested_family="Calibri",
+        exact_installed=False,
+        candidates=(
+            FontCandidate(
+                requested_family="Calibri",
+                provided_family="Carlito",
+                source="distro-package",
+                relation="metric-compatible",
+                installable=True,
+                confidence=0.8,
+                package_name="fonts-crosextra-carlito",
+            ),
+        ),
+        recommended_candidate=FontCandidate(
+            requested_family="Calibri",
+            provided_family="Carlito",
+            source="distro-package",
+            relation="metric-compatible",
+            installable=True,
+            confidence=0.8,
+            package_name="fonts-crosextra-carlito",
+        ),
+        recommended_action="install_metric_compatible",
+        risk_level="medium",
+        notes=(),
+    )
+
+    assert resolution_row(resolution, {"Calibri": (tmp_path / "deck.pptx",)}) == [
+        "Calibri",
+        "no",
+        "no",
+        "install_metric_compatible",
+        "Carlito",
+        "metric-compatible",
+        "distro-package",
+        "medium",
+        "1",
+    ]
+
+
+def test_resolution_details_include_relation_source_and_files(tmp_path):
+    resolution = FontResolution(
+        requested_family="Calibri",
+        exact_installed=False,
+        candidates=(),
+        recommended_candidate=FontCandidate(
+            requested_family="Calibri",
+            provided_family="Carlito",
+            source="distro-package",
+            relation="metric-compatible",
+            installable=True,
+            confidence=0.8,
+            package_name="fonts-crosextra-carlito",
+            install_command=("sudo", "apt", "install", "fonts-crosextra-carlito"),
+        ),
+        recommended_action="install_metric_compatible",
+        risk_level="medium",
+        notes=("metric-compatible fallback",),
+    )
+
+    text = resolution_details_text(resolution, (tmp_path / "deck.pptx",))
+
+    assert "Recommended family: Carlito" in text
+    assert "Relation: metric-compatible" in text
+    assert "Source: distro-package" in text
+    assert "sudo apt install fonts-crosextra-carlito" in text
+    assert "deck.pptx" in text
+
+
+def test_safe_system_packages_excludes_high_risk_symbol_fonts():
+    safe = FontResolution(
+        requested_family="Calibri",
+        exact_installed=False,
+        candidates=(),
+        recommended_candidate=FontCandidate(
+            requested_family="Calibri",
+            provided_family="Carlito",
+            source="distro-package",
+            relation="metric-compatible",
+            installable=True,
+            confidence=0.8,
+            package_name="fonts-crosextra-carlito",
+        ),
+        recommended_action="install_metric_compatible",
+        risk_level="medium",
+        notes=(),
+    )
+    unsafe = FontResolution(
+        requested_family="Wingdings",
+        exact_installed=False,
+        candidates=(),
+        recommended_candidate=FontCandidate(
+            requested_family="Wingdings",
+            provided_family="Wingdings",
+            source="distro-package",
+            relation="exact",
+            installable=True,
+            confidence=0.8,
+            package_name="unsafe-package",
+        ),
+        recommended_action="unsafe_symbol_font",
+        risk_level="high",
+        notes=(),
+    )
+    report = ResolutionReport(
+        scanned_files=1,
+        requested_fonts=2,
+        missing_fonts=2,
+        resolved_exact=0,
+        resolved_metric=1,
+        manual_required=1,
+        unsafe=1,
+        resolutions=(safe, unsafe),
+    )
+
+    assert safe_system_packages(report) == ("fonts-crosextra-carlito",)
+    assert "Unsafe recommendations: 1" in resolution_report_text(report)
+
+
 def test_summary_text_counts_high_risk_and_missing_fonts(tmp_path):
     scan = ScanResult(root=tmp_path, documents=(), errors=())
     font = FontSummary(
@@ -213,6 +339,72 @@ def test_install_header_toggles_visible_installable_fonts(monkeypatch):
     window.table.item(0, 0).setCheckState(Qt.Unchecked)
 
     assert window.table.horizontalHeaderItem(0).checkState() == Qt.PartiallyChecked
+
+    window.close()
+    app.processEvents()
+
+
+def test_resolution_table_displays_cdc_columns(monkeypatch, tmp_path):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from pptx_font_resolver.analysis import AnalysisResult
+    from pptx_font_resolver.qt_app import _load_qt_modules, build_main_window
+
+    qt = _load_qt_modules()
+    QApplication = qt["QApplication"]
+    app = QApplication.instance() or QApplication([])
+    MainWindow = build_main_window(qt)
+    window = MainWindow()
+    font = FontSummary(
+        family="Calibri",
+        occurrences=1,
+        files=(tmp_path / "deck.pptx",),
+        embedded_in=(),
+        status=FontStatus("Calibri", exact_installed=False),
+        metric_fallbacks=(),
+        risk_level="medium",
+        risk_reason="missing exact font",
+        recommendation="install metric-compatible fallback",
+    )
+    resolution = FontResolution(
+        requested_family="Calibri",
+        exact_installed=False,
+        candidates=(),
+        recommended_candidate=FontCandidate(
+            requested_family="Calibri",
+            provided_family="Carlito",
+            source="distro-package",
+            relation="metric-compatible",
+            installable=True,
+            confidence=0.8,
+            package_name="fonts-crosextra-carlito",
+        ),
+        recommended_action="install_metric_compatible",
+        risk_level="medium",
+        notes=(),
+    )
+    window.analysis = AnalysisResult(
+        scan=ScanResult(root=tmp_path, documents=(), errors=()),
+        fonts=(font,),
+    )
+    window.resolution_report = ResolutionReport(
+        scanned_files=1,
+        requested_fonts=1,
+        missing_fonts=1,
+        resolved_exact=0,
+        resolved_metric=1,
+        manual_required=0,
+        unsafe=0,
+        resolutions=(resolution,),
+    )
+
+    window.populate_resolution_table()
+
+    assert window.table.horizontalHeaderItem(0).text() == "Family"
+    assert window.table.horizontalHeaderItem(3).text() == "Recommended action"
+    assert window.table.item(0, 0).text() == "Calibri"
+    assert window.table.item(0, 4).text() == "Carlito"
+    assert window.table.item(0, 8).text() == "1"
 
     window.close()
     app.processEvents()

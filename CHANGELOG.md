@@ -32,6 +32,8 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
   single font recommendation and importing user-owned `.ttf`, `.otf`, or `.ttc`
   files.
 - Optional `font-import` extra for reading font metadata with fontTools.
+- GUI `Resolve all`, `Explain`, `Import font file`, and `Install safe
+  recommendations` actions backed by the multi-source resolution engine.
 
 ### Changed
 
@@ -44,3 +46,6 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
   recommendations.
 - Resolution JSON/CSV/Markdown reports now expose the CdC fields for action,
   relation, source, package, install command, license hint, and warnings.
+- The GUI now has a resolution-table mode with installed status, Fontist
+  availability, recommended action, family, relation, source, risk, and file
+  count columns.

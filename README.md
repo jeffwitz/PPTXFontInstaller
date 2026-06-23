@@ -83,4 +83,7 @@ automatic unless explicitly requested by the user.
   every missing font after one global confirmation and prints a terminal report.
 - Optional PySide6 GUI for selecting a folder, scanning in the background,
   reviewing font risk, installing selected fonts or all missing fonts, coloring
-  post-install results, and exporting JSON/CSV/Markdown reports.
+  post-install results, resolving missing fonts through the multi-source engine,
+  explaining recommendations, importing user-owned font files, installing safe
+  system-package recommendations after confirmation, and exporting
+  JSON/CSV/Markdown reports.
