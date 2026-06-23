@@ -11,6 +11,20 @@ from rich.table import Table
 from .analysis import analyze_path
 from .fontist_backend import FontistBackend, FontistInstallResult, output_mentions_license
 from .report import to_csv, to_json, to_markdown, write_report
+from .resolution import default_engine
+from .resolution.models import ResolutionReport
+from .resolution.report import (
+    to_csv as resolution_to_csv,
+)
+from .resolution.report import (
+    to_json as resolution_to_json,
+)
+from .resolution.report import (
+    to_markdown as resolution_to_markdown,
+)
+from .resolution.report import (
+    to_table as resolution_to_table,
+)
 from .scanner import default_jobs
 
 app = typer.Typer(help="Scan Office PPTX/DOCX files and diagnose missing Linux fonts.")
@@ -88,13 +102,64 @@ def report(
         write_report(output, content)
 
 
+@app.command()
+def resolve(
+    folder: Annotated[Path, typer.Argument(help="Folder, PPTX file, or DOCX file to resolve.")],
+    depth: Annotated[str, typer.Option(help="Depth integer or 'infinite'.")] = "infinite",
+    jobs: Annotated[int, typer.Option(help="Parallel workers.")] = default_jobs(),
+    format: Annotated[str, typer.Option(help="table, json, csv, or markdown.")] = "table",
+    output: Annotated[Path | None, typer.Option(help="Resolution report output file.")] = None,
+    all_fonts: Annotated[bool, typer.Option(help="Include exact installed fonts.")] = False,
+    only_missing: Annotated[bool, typer.Option(help="Only include missing exact fonts.")] = False,
+    only_actionable: Annotated[
+        bool,
+        typer.Option(help="Only include fonts with an action other than none."),
+    ] = False,
+    provider: Annotated[
+        str,
+        typer.Option(help="fontist, apt, google, manual, or all."),
+    ] = "all",
+    distro: Annotated[str, typer.Option(help="debian or ubuntu.")] = "debian",
+    accept_license: Annotated[
+        bool,
+        typer.Option(help="Include license-accepting Fontist commands in the report."),
+    ] = False,
+) -> None:
+    if provider not in {"fontist", "apt", "google", "manual", "all"}:
+        raise typer.BadParameter("provider must be fontist, apt, google, manual, or all")
+    if distro not in {"debian", "ubuntu"}:
+        raise typer.BadParameter("distro must be debian or ubuntu")
+    analysis = analyze_path(folder, depth=depth, jobs=jobs, use_fontconfig=False)
+    engine = default_engine(provider=provider, distro=distro, accept_license=accept_license)
+    resolution_report = engine.resolve_many(
+        analysis.scan.unique_fonts,
+        scanned_files=len(analysis.scan.documents),
+    )
+    resolutions = resolution_report.resolutions
+    if only_missing or not all_fonts:
+        resolutions = tuple(
+            resolution for resolution in resolutions if not resolution.exact_installed
+        )
+    if only_actionable:
+        resolutions = tuple(
+            resolution for resolution in resolutions if resolution.recommended_action != "none"
+        )
+    if resolutions != resolution_report.resolutions:
+        resolution_report = _filtered_resolution_report(resolution_report, resolutions)
+    content = _format_resolution_output(format, resolution_report)
+    if output is None:
+        console.print(content)
+    else:
+        write_report(output, content)
+
+
 @app.command("install-font")
 def install_font(
     font_name: Annotated[str, typer.Argument(help="Font family to install.")],
     accept_license: Annotated[
         bool,
         typer.Option(help="Accept the license for this explicitly selected font."),
-    ] = True,
+    ] = False,
     ask_license: Annotated[
         bool,
         typer.Option("--ask-license/--no-ask-license", help="Ask if Fontist requires a license."),
@@ -129,7 +194,7 @@ def install_missing(
     accept_license: Annotated[
         bool,
         typer.Option(help="Accept licenses for each font selected with the install prompt."),
-    ] = True,
+    ] = False,
     ask_license: Annotated[
         bool,
         typer.Option("--ask-license/--no-ask-license", help="Ask if Fontist requires a license."),
@@ -142,8 +207,18 @@ def install_missing(
         bool,
         typer.Option(help="Show installable fonts but do not install."),
     ] = False,
+    all_missing: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help=(
+                "Try every missing font after one global confirmation instead of "
+                "asking per font."
+            ),
+        ),
+    ] = False,
 ) -> None:
-    if accept_license and not ask and not dry_run:
+    if accept_license and not ask and not dry_run and not all_missing:
         raise typer.BadParameter(
             "install-missing cannot accept licenses without --ask confirmation per font"
         )
@@ -160,25 +235,46 @@ def install_missing(
     backend = FontistBackend()
     location = _validate_install_location(location)
     install_all_remaining = False
+    report_rows: list[tuple[str, str, str]] = []
+
+    if all_missing and not dry_run:
+        message = "Installer toutes les polices manquantes disponibles via Fontist ?"
+        if accept_license:
+            message = (
+                "Installer toutes les polices manquantes disponibles via Fontist "
+                "et accepter leurs licences si Fontist les demande ?"
+            )
+        confirmed = typer.confirm(message)
+        if not confirmed:
+            console.print("[yellow]Installation annulée[/yellow]")
+            return
+        install_all_remaining = True
+
     for font in candidates:
         probe = backend.probe_install(font.family)
         if not probe.available:
-            console.print(f"[yellow]Ignorée[/yellow] {font.family}: non disponible via Fontist")
+            message = _fontist_unavailable_detail(probe.stdout, probe.stderr)
+            console.print(
+                f"[yellow]Ignorée[/yellow] {font.family}: non disponible via Fontist"
+            )
+            report_rows.append((font.family, "non installable", message))
             continue
         console.print(
             f"{font.family}: risque={font.risk_level}, occurrences={font.occurrences}, "
             f"fichiers={len(font.files)}"
         )
         if dry_run:
+            report_rows.append((font.family, "disponible", "dry-run"))
             continue
         if ask and not install_all_remaining:
             choice = _install_choice(font.family, accept_license)
             if choice == "n":
                 console.print(f"[yellow]Ignorée[/yellow] {font.family}")
+                report_rows.append((font.family, "ignorée", "refus utilisateur"))
                 continue
             if choice == "a":
                 install_all_remaining = True
-        _install_single_font(
+        installed = _install_single_font(
             backend,
             font.family,
             accept_license=accept_license,
@@ -187,6 +283,49 @@ def install_missing(
             dry_run=False,
             raise_on_error=False,
         )
+        report_rows.append(
+            (
+                font.family,
+                "installée" if installed else "échec",
+                "Fontist OK" if installed else "voir la sortie Fontist ci-dessus",
+            )
+        )
+
+    _print_install_attempt_report(report_rows)
+
+
+def _filtered_resolution_report(report: ResolutionReport, resolutions) -> ResolutionReport:
+    return ResolutionReport(
+        scanned_files=report.scanned_files,
+        requested_fonts=len(resolutions),
+        missing_fonts=sum(1 for resolution in resolutions if not resolution.exact_installed),
+        resolved_exact=sum(1 for resolution in resolutions if resolution.exact_installed),
+        resolved_metric=sum(
+            1
+            for resolution in resolutions
+            if resolution.recommended_candidate is not None
+            and resolution.recommended_candidate.relation == "metric-compatible"
+        ),
+        manual_required=sum(
+            1
+            for resolution in resolutions
+            if resolution.recommended_action in {"manual_import", "unsafe_symbol_font"}
+        ),
+        unsafe=sum(1 for resolution in resolutions if resolution.risk_level == "high"),
+        resolutions=resolutions,
+    )
+
+
+def _format_resolution_output(format_name: str, report) -> str:
+    if format_name == "json":
+        return resolution_to_json(report)
+    if format_name == "csv":
+        return resolution_to_csv(report)
+    if format_name == "markdown":
+        return resolution_to_markdown(report)
+    if format_name == "table":
+        return resolution_to_table(report)
+    raise typer.BadParameter("format must be table, json, csv, or markdown")
 
 
 def _format_output(format_name: str, result, summaries, *, show_files: bool) -> str:
@@ -296,6 +435,30 @@ def _print_install_success(result: FontistInstallResult) -> None:
         exact = "oui" if status.exact_installed else "non"
         matched = status.matched_family or "inconnu"
         console.print(f"Vérification Fontconfig: exact={exact}, fc-match={matched}")
+
+
+def _fontist_unavailable_detail(stdout: str, stderr: str) -> str:
+    return stderr.strip() or stdout.strip() or "a installer manuellement"
+
+
+def _print_install_attempt_report(rows: list[tuple[str, str, str]]) -> None:
+    if not rows:
+        return
+    table = Table(title="Rapport installation Fontist")
+    table.add_column("Police")
+    table.add_column("Resultat")
+    table.add_column("Detail")
+    colors = {
+        "installée": "green",
+        "disponible": "cyan",
+        "non installable": "red",
+        "échec": "red",
+        "ignorée": "yellow",
+    }
+    for family, status, detail in rows:
+        color = colors.get(status, "white")
+        table.add_row(family, f"[{color}]{status}[/{color}]", detail)
+    console.print(table)
 
 
 def _handle_install_failure(code: int, raise_on_error: bool) -> bool:

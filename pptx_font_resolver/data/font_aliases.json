@@ -1,0 +1,62 @@
+{
+  "Calibri": {
+    "manual": {"note": "Proprietary Microsoft font. Use manual import if licensed."},
+    "metric_compatible": [
+      {"family": "Carlito", "source": "distro-package", "package": "fonts-crosextra-carlito", "license": "OFL-1.1"}
+    ]
+  },
+  "Cambria": {
+    "manual": {"note": "Proprietary Microsoft font. Use manual import if licensed."},
+    "metric_compatible": [
+      {"family": "Caladea", "source": "distro-package", "package": "fonts-crosextra-caladea", "license": "OFL-1.1"}
+    ]
+  },
+  "Arial": {
+    "metric_compatible": [
+      {"family": "Arimo", "source": "distro-package", "package": "fonts-croscore"},
+      {"family": "Liberation Sans", "source": "distro-package", "package": "fonts-liberation"}
+    ]
+  },
+  "Times New Roman": {
+    "metric_compatible": [
+      {"family": "Tinos", "source": "distro-package", "package": "fonts-croscore"},
+      {"family": "Liberation Serif", "source": "distro-package", "package": "fonts-liberation"}
+    ]
+  },
+  "Courier New": {
+    "metric_compatible": [
+      {"family": "Cousine", "source": "distro-package", "package": "fonts-croscore"},
+      {"family": "Liberation Mono", "source": "distro-package", "package": "fonts-liberation"}
+    ]
+  },
+  "Aptos": {
+    "manual": {"note": "Recent Microsoft font. No guaranteed free metric-compatible replacement."},
+    "visual_substitute": [
+      {"family": "Carlito"},
+      {"family": "Noto Sans"},
+      {"family": "Source Sans 3"}
+    ]
+  },
+  "Aptos Display": {
+    "manual": {"note": "Recent Microsoft font. Manual import recommended if exact rendering is required."},
+    "visual_substitute": [
+      {"family": "Source Sans 3"},
+      {"family": "Noto Sans"}
+    ]
+  },
+  "Segoe UI": {
+    "manual": {"note": "Microsoft font. Manual import recommended if exact rendering is required."},
+    "visual_substitute": [
+      {"family": "Noto Sans"},
+      {"family": "Liberation Sans"},
+      {"family": "DejaVu Sans"}
+    ]
+  },
+  "Helvetica": {
+    "visual_substitute": [
+      {"family": "Liberation Sans"},
+      {"family": "Arimo"},
+      {"family": "Noto Sans"}
+    ]
+  }
+}

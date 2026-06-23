@@ -1,0 +1,35 @@
+{
+  "Calibri": {
+    "metric_compatible": [
+      {"family": "Carlito", "package": "fonts-crosextra-carlito", "distro": "debian", "relation": "metric-compatible", "license": "OFL-1.1"}
+    ]
+  },
+  "Cambria": {
+    "metric_compatible": [
+      {"family": "Caladea", "package": "fonts-crosextra-caladea", "distro": "debian", "relation": "metric-compatible", "license": "OFL-1.1"}
+    ]
+  },
+  "Arial": {
+    "metric_compatible": [
+      {"family": "Arimo", "package": "fonts-croscore", "distro": "debian", "relation": "metric-compatible"},
+      {"family": "Liberation Sans", "package": "fonts-liberation", "distro": "debian", "relation": "metric-compatible"}
+    ]
+  },
+  "Times New Roman": {
+    "metric_compatible": [
+      {"family": "Tinos", "package": "fonts-croscore", "distro": "debian", "relation": "metric-compatible"},
+      {"family": "Liberation Serif", "package": "fonts-liberation", "distro": "debian", "relation": "metric-compatible"}
+    ]
+  },
+  "Courier New": {
+    "metric_compatible": [
+      {"family": "Cousine", "package": "fonts-croscore", "distro": "debian", "relation": "metric-compatible"},
+      {"family": "Liberation Mono", "package": "fonts-liberation", "distro": "debian", "relation": "metric-compatible"}
+    ]
+  },
+  "Noto Sans CJK SC": {
+    "exact_or_family": [
+      {"family": "Noto Sans CJK SC", "package": "fonts-noto-cjk", "distro": "debian", "relation": "exact"}
+    ]
+  }
+}

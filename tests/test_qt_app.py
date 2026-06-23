@@ -9,6 +9,7 @@ from pptx_font_resolver.qt_app import (
     install_prompt_text,
     install_result_summary,
     is_installable_font,
+    manual_install_tooltip,
     qt_dependency_message,
     summary_text,
 )
@@ -33,6 +34,14 @@ def test_fontist_unavailable_message_has_fallback_detail():
         fontist_unavailable_message("Missing Sans", "", "")
         == "Missing Sans: not available through Fontist"
     )
+
+
+def test_manual_install_tooltip_explains_manual_install():
+    text = manual_install_tooltip("Cloud Font")
+
+    assert "Cloud Font" in text
+    assert "not installable with Fontist" in text
+    assert "manually" in text
 
 
 def test_install_result_summary_lists_unavailable_fonts():
@@ -150,3 +159,60 @@ def test_summary_text_counts_high_risk_and_missing_fonts(tmp_path):
     assert "Unique fonts: 1" in text
     assert "Missing exact fonts: 1" in text
     assert "High-risk substitutions: 1" in text
+
+
+
+def test_install_header_toggles_visible_installable_fonts(monkeypatch):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from pptx_font_resolver.analysis import AnalysisResult
+    from pptx_font_resolver.qt_app import _load_qt_modules, build_main_window
+
+    qt = _load_qt_modules()
+    Qt = qt["Qt"]
+    QApplication = qt["QApplication"]
+    app = QApplication.instance() or QApplication([])
+    MainWindow = build_main_window(qt)
+    window = MainWindow()
+    missing_a = FontSummary(
+        family="Wingdings",
+        occurrences=1,
+        files=(),
+        embedded_in=(),
+        status=FontStatus("Wingdings", exact_installed=False),
+        metric_fallbacks=(),
+        risk_level="high",
+        risk_reason="missing exact font",
+        recommendation="install",
+    )
+    missing_b = FontSummary(
+        family="Symbol",
+        occurrences=1,
+        files=(),
+        embedded_in=(),
+        status=FontStatus("Symbol", exact_installed=False),
+        metric_fallbacks=(),
+        risk_level="high",
+        risk_reason="missing exact font",
+        recommendation="install",
+    )
+    window.analysis = AnalysisResult(
+        scan=ScanResult(root=Path("."), documents=(), errors=()),
+        fonts=(missing_a, missing_b),
+    )
+    window.populate_table()
+
+    assert window.table.horizontalHeaderItem(0).checkState() == Qt.Unchecked
+
+    window.toggle_all_install_checks(0)
+
+    assert window.table.item(0, 0).checkState() == Qt.Checked
+    assert window.table.item(1, 0).checkState() == Qt.Checked
+    assert window.table.horizontalHeaderItem(0).checkState() == Qt.Checked
+
+    window.table.item(0, 0).setCheckState(Qt.Unchecked)
+
+    assert window.table.horizontalHeaderItem(0).checkState() == Qt.PartiallyChecked
+
+    window.close()
+    app.processEvents()
