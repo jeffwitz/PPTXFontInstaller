@@ -112,3 +112,24 @@ def test_cli_explain_wingdings_marks_unsafe(monkeypatch):
     assert result.exit_code == 0, result.output
     assert "Action: unsafe_symbol_font" in result.output
     assert "Risk: high" in result.output
+
+
+def test_cli_install_google_font_dry_run(tmp_path, monkeypatch):
+    from pptx_font_resolver.resolution.google_fonts import GoogleFontInstallResult
+
+    monkeypatch.setattr(
+        "pptx_font_resolver.cli.install_google_font_file",
+        lambda font_name, **kwargs: GoogleFontInstallResult(
+            family=font_name,
+            target_paths=(tmp_path / "merriweather-1.woff2",),
+            downloaded=False,
+            cache_refreshed=False,
+        ),
+    )
+
+    result = CliRunner().invoke(app, ["install-google-font", "Merriweather", "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    assert "Google Fonts install" in result.output
+    assert "Merriweather" in result.output
+    assert "dry-run" in result.output

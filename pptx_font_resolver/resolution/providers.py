@@ -8,6 +8,7 @@ from pptx_font_resolver.fontist_backend import FontistBackend
 from pptx_font_resolver.resolver import is_symbol_font
 
 from .data import find_family_entry, load_json, normalize_family
+from .google_fonts import lookup_google_font
 from .models import FontCandidate
 
 
@@ -123,23 +124,38 @@ class DistroPackageProvider:
 
 @dataclass(frozen=True)
 class GoogleFontsProvider:
+    live_lookup: bool = True
+    timeout: float = 3.0
     name: str = "google-fonts"
 
     def candidates_for(self, family: str) -> tuple[FontCandidate, ...]:
         match = find_family_entry(load_json("google_fonts_index.json"), family)
-        if match is None:
+        if match is not None:
+            requested, entry = match
+            provided_family = entry["family"]
+            license_hint = entry.get("license")
+            url = entry.get("url")
+        elif self.live_lookup:
+            info = lookup_google_font(family, timeout=self.timeout)
+            if info is None:
+                return ()
+            requested = family
+            provided_family = info.family
+            license_hint = info.license_hint
+            url = info.css_url
+        else:
             return ()
-        requested, entry = match
         return (
             FontCandidate(
                 requested_family=requested,
-                provided_family=entry["family"],
+                provided_family=provided_family,
                 source="google-fonts",
                 relation="exact",
                 installable=True,
                 confidence=0.86,
-                license_hint=entry.get("license"),
-                url=entry.get("url"),
+                install_command=("pptx-font-resolver", "install-google-font", provided_family),
+                license_hint=license_hint,
+                url=url,
             ),
         )
 

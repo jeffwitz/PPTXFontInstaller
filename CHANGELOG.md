@@ -38,6 +38,8 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
   fallback acceptance, and ignored recommendations.
 - CdC test coverage for resolution-engine core cases, distro package provider
   hints, resolution report formats, and CLI `resolve` filters.
+- Live Google Fonts lookup and `install-google-font` support, with GUI
+  installation for selected Google Fonts recommendations.
 
 ### Changed
 

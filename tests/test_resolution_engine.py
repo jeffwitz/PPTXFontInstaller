@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pptx_font_resolver.resolution import default_engine
+from pptx_font_resolver.resolution.google_fonts import GoogleFontInfo
 
 
 def test_resolution_engine_cdc_core_cases(monkeypatch):
@@ -19,6 +20,10 @@ def test_resolution_engine_cdc_core_cases(monkeypatch):
     monkeypatch.setattr(
         "pptx_font_resolver.resolution.providers.FontistProvider.candidates_for",
         lambda self, family: (),
+    )
+    monkeypatch.setattr(
+        "pptx_font_resolver.resolution.providers.lookup_google_font",
+        lambda family, timeout: None,
     )
     engine = default_engine(provider="all")
 
@@ -47,3 +52,34 @@ def test_resolution_engine_cdc_core_cases(monkeypatch):
 
     assert unknown.recommended_action == "unresolved"
     assert unknown.recommended_candidate is None
+
+
+def test_resolution_engine_can_resolve_live_google_font(monkeypatch):
+    monkeypatch.setattr(
+        "pptx_font_resolver.fontconfig.installed_families",
+        lambda: set(),
+    )
+    monkeypatch.setattr(
+        "pptx_font_resolver.resolution.engine.check_font",
+        lambda family: None,
+    )
+    monkeypatch.setattr(
+        "pptx_font_resolver.resolution.providers.lookup_google_font",
+        lambda family, timeout: GoogleFontInfo(
+            family=family,
+            css_url=f"https://fonts.googleapis.com/css2?family={family}",
+            font_urls=("https://fonts.gstatic.com/s/demo/v1/a.woff2",),
+        ),
+    )
+    engine = default_engine(provider="google")
+
+    resolution = engine.resolve_family("Merriweather")
+
+    assert resolution.recommended_action == "install_google_font"
+    assert resolution.recommended_candidate is not None
+    assert resolution.recommended_candidate.source == "google-fonts"
+    assert resolution.recommended_candidate.install_command == (
+        "pptx-font-resolver",
+        "install-google-font",
+        "Merriweather",
+    )

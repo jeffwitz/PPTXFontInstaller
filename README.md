@@ -22,6 +22,7 @@ pptx-font-resolver fonts ./documents --all-fonts --show-files
 pptx-font-resolver report ./documents --format json --output report.json
 pptx-font-resolver resolve ./documents --provider all --format markdown
 pptx-font-resolver explain "Calibri"
+pptx-font-resolver install-google-font "Merriweather" --dry-run
 pptx-font-resolver import-font ~/Downloads/Aptos.ttf
 pptx-font-resolver import-fonts ~/Downloads/fonts --dry-run
 pptx-font-resolver install-font "Aptos" --location user --accept-license
@@ -74,6 +75,8 @@ automatic unless explicitly requested by the user.
   import advice, and unsafe symbol-font cases.
 - Manual `.ttf`, `.otf`, and `.ttc` import commands with font family metadata
   checks and optional Fontconfig cache refresh.
+- Live Google Fonts lookup through the public CSS API plus local user
+  installation for matching open-source font families.
 - Risk classification for dangerous substitutions, including symbol fonts and
   CJK fonts substituted by Latin families.
 - Conservative style-suffix normalization, such as treating

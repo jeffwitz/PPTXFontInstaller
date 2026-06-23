@@ -8,6 +8,7 @@ from pptx_font_resolver.qt_app import (
     font_row,
     fontist_candidate,
     fontist_unavailable_message,
+    google_fonts_candidate,
     install_prompt_text,
     install_result_summary,
     is_installable_font,
@@ -310,6 +311,28 @@ def test_selected_resolution_action_candidates_are_safe():
     assert system_package_candidate(unsafe) is None
 
 
+def test_google_fonts_candidate_requires_exact_google_source():
+    google = FontCandidate(
+        requested_family="Merriweather",
+        provided_family="Merriweather",
+        source="google-fonts",
+        relation="exact",
+        installable=True,
+        confidence=0.86,
+    )
+    resolution = FontResolution(
+        requested_family="Merriweather",
+        exact_installed=False,
+        candidates=(google,),
+        recommended_candidate=google,
+        recommended_action="install_google_font",
+        risk_level="low",
+        notes=(),
+    )
+
+    assert google_fonts_candidate(resolution) == google
+
+
 def test_summary_text_counts_high_risk_and_missing_fonts(tmp_path):
     scan = ScanResult(root=tmp_path, documents=(), errors=())
     font = FontSummary(
@@ -451,6 +474,71 @@ def test_resolution_table_displays_cdc_columns(monkeypatch, tmp_path):
     assert window.table.item(0, 0).text() == "Calibri"
     assert window.table.item(0, 4).text() == "Carlito"
     assert window.table.item(0, 8).text() == "1"
+
+    window.close()
+    app.processEvents()
+
+
+def test_resolution_selection_enables_google_button(monkeypatch, tmp_path):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from pptx_font_resolver.analysis import AnalysisResult
+    from pptx_font_resolver.qt_app import _load_qt_modules, build_main_window
+
+    qt = _load_qt_modules()
+    QApplication = qt["QApplication"]
+    app = QApplication.instance() or QApplication([])
+    MainWindow = build_main_window(qt)
+    window = MainWindow()
+    font = FontSummary(
+        family="Merriweather",
+        occurrences=1,
+        files=(tmp_path / "deck.pptx",),
+        embedded_in=(),
+        status=FontStatus("Merriweather", exact_installed=False),
+        metric_fallbacks=(),
+        risk_level="low",
+        risk_reason="missing exact font",
+        recommendation="install google font",
+    )
+    google = FontCandidate(
+        requested_family="Merriweather",
+        provided_family="Merriweather",
+        source="google-fonts",
+        relation="exact",
+        installable=True,
+        confidence=0.86,
+    )
+    resolution = FontResolution(
+        requested_family="Merriweather",
+        exact_installed=False,
+        candidates=(google,),
+        recommended_candidate=google,
+        recommended_action="install_google_font",
+        risk_level="low",
+        notes=(),
+    )
+    window.analysis = AnalysisResult(
+        scan=ScanResult(root=tmp_path, documents=(), errors=()),
+        fonts=(font,),
+    )
+    window.resolution_report = ResolutionReport(
+        scanned_files=1,
+        requested_fonts=1,
+        missing_fonts=1,
+        resolved_exact=0,
+        resolved_metric=0,
+        manual_required=0,
+        unsafe=0,
+        resolutions=(resolution,),
+    )
+
+    window.populate_resolution_table()
+    window.table.selectRow(0)
+    app.processEvents()
+
+    assert window.install_google_button.isEnabled() is True
+    assert window.install_system_button.isEnabled() is False
 
     window.close()
     app.processEvents()

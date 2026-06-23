@@ -10,6 +10,7 @@ from .fontist_backend import FontistBackend
 from .models import FontSummary
 from .report import to_csv, to_json, to_markdown, write_report
 from .resolution import default_engine
+from .resolution.google_fonts import GoogleFontsError, install_google_font
 from .resolution.manual_import import ManualImportError, import_font_path
 from .resolution.models import FontResolution, ResolutionReport
 from .resolution.report import (
@@ -151,6 +152,15 @@ def system_package_candidate(resolution: FontResolution):
     if candidate.source != "distro-package" or candidate.package_name is None:
         return None
     if candidate.relation not in {"exact", "metric-compatible"}:
+        return None
+    return candidate
+
+
+def google_fonts_candidate(resolution: FontResolution):
+    candidate = resolution.recommended_candidate
+    if candidate is None:
+        return None
+    if candidate.source != "google-fonts" or candidate.relation != "exact":
         return None
     return candidate
 
@@ -425,6 +435,7 @@ def build_main_window(qt: dict[str, Any]):
             self.resolve_button = QPushButton("Resolve all")
             self.explain_button = QPushButton("Explain")
             self.install_fontist_button = QPushButton("Install via Fontist")
+            self.install_google_button = QPushButton("Install via Google Fonts")
             self.install_system_button = QPushButton("Install system package")
             self.safe_install_button = QPushButton("Install safe recommendations")
             self.import_font_button = QPushButton("Import font file")
@@ -464,6 +475,7 @@ def build_main_window(qt: dict[str, Any]):
             exports = QHBoxLayout()
             exports.addWidget(self.explain_button)
             exports.addWidget(self.install_fontist_button)
+            exports.addWidget(self.install_google_button)
             exports.addWidget(self.install_system_button)
             exports.addWidget(self.safe_install_button)
             exports.addWidget(self.import_font_button)
@@ -493,6 +505,7 @@ def build_main_window(qt: dict[str, Any]):
             self.resolve_button.clicked.connect(self.resolve_all_fonts)
             self.explain_button.clicked.connect(self.explain_selected_font)
             self.install_fontist_button.clicked.connect(self.install_selected_via_fontist)
+            self.install_google_button.clicked.connect(self.install_selected_via_google_fonts)
             self.install_system_button.clicked.connect(self.install_selected_system_package)
             self.safe_install_button.clicked.connect(self.install_safe_recommendations)
             self.import_font_button.clicked.connect(self.import_font_file)
@@ -512,6 +525,7 @@ def build_main_window(qt: dict[str, Any]):
             self.resolve_button.setEnabled(False)
             self.explain_button.setEnabled(False)
             self.install_fontist_button.setEnabled(False)
+            self.install_google_button.setEnabled(False)
             self.install_system_button.setEnabled(False)
             self.safe_install_button.setEnabled(False)
             self.import_font_button.setEnabled(False)
@@ -613,6 +627,7 @@ def build_main_window(qt: dict[str, Any]):
             self.install_all_button.setEnabled(has_missing)
             self.explain_button.setEnabled(False)
             self.install_fontist_button.setEnabled(False)
+            self.install_google_button.setEnabled(False)
             self.install_system_button.setEnabled(False)
             self.safe_install_button.setEnabled(False)
             self.accept_fallback_button.setEnabled(False)
@@ -831,11 +846,13 @@ def build_main_window(qt: dict[str, Any]):
         def update_resolution_action_buttons(self, resolution: FontResolution | None) -> None:
             if resolution is None:
                 self.install_fontist_button.setEnabled(False)
+                self.install_google_button.setEnabled(False)
                 self.install_system_button.setEnabled(False)
                 self.accept_fallback_button.setEnabled(False)
                 self.ignore_button.setEnabled(False)
                 return
             self.install_fontist_button.setEnabled(fontist_candidate(resolution) is not None)
+            self.install_google_button.setEnabled(google_fonts_candidate(resolution) is not None)
             self.install_system_button.setEnabled(system_package_candidate(resolution) is not None)
             self.accept_fallback_button.setEnabled(fallback_candidate(resolution) is not None)
             self.ignore_button.setEnabled(True)
@@ -879,6 +896,37 @@ def build_main_window(qt: dict[str, Any]):
                 [resolution.requested_family],
                 f"Installing {resolution.requested_family} with Fontist...",
             )
+
+        def install_selected_via_google_fonts(self) -> None:
+            resolution = self.selected_resolution()
+            if resolution is None:
+                QMessageBox.information(
+                    self,
+                    "Install via Google Fonts",
+                    "Select a font row first.",
+                )
+                return
+            candidate = google_fonts_candidate(resolution)
+            if candidate is None:
+                QMessageBox.information(
+                    self,
+                    "Install via Google Fonts",
+                    "This font is not available through Google Fonts.",
+                )
+                return
+            try:
+                result = install_google_font(candidate.provided_family)
+            except GoogleFontsError as exc:
+                QMessageBox.critical(self, "Install via Google Fonts failed", str(exc))
+                return
+            targets = "\n".join(str(path) for path in result.target_paths)
+            QMessageBox.information(
+                self,
+                "Install via Google Fonts",
+                f"Installed {candidate.provided_family}.\n\n{targets}",
+            )
+            if self.analysis is not None:
+                self.start_scan()
 
         def install_selected_system_package(self) -> None:
             resolution = self.selected_resolution()

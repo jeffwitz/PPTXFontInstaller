@@ -13,6 +13,13 @@ from .analysis import analyze_path
 from .fontist_backend import FontistBackend, FontistInstallResult, output_mentions_license
 from .report import to_csv, to_json, to_markdown, write_report
 from .resolution import default_engine
+from .resolution.google_fonts import (
+    GoogleFontInstallResult,
+    GoogleFontsError,
+)
+from .resolution.google_fonts import (
+    install_google_font as install_google_font_file,
+)
 from .resolution.manual_import import (
     ManualFontImportResult,
     ManualImportError,
@@ -240,6 +247,35 @@ def import_fonts(
         dry_run=dry_run,
         copy=copy,
     )
+
+
+@app.command("install-google-font")
+def install_google_font(
+    font_name: Annotated[str, typer.Argument(help="Google Fonts family to install.")],
+    target: Annotated[
+        Path | None,
+        typer.Option(help="Target font directory."),
+    ] = None,
+    refresh_cache: Annotated[
+        bool,
+        typer.Option("--refresh-cache/--no-refresh-cache", help="Refresh Fontconfig cache."),
+    ] = True,
+    dry_run: Annotated[
+        bool,
+        typer.Option(help="Resolve and show download targets without installing."),
+    ] = False,
+) -> None:
+    try:
+        result = install_google_font_file(
+            font_name,
+            target=target,
+            refresh_cache=refresh_cache,
+            dry_run=dry_run,
+        )
+    except GoogleFontsError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    _print_google_install_report(result)
 
 
 @app.command("install-font")
@@ -557,6 +593,19 @@ def _print_manual_import_report(
     console.print(table)
 
 
+def _print_google_install_report(result: GoogleFontInstallResult) -> None:
+    table = Table(title="Google Fonts install")
+    table.add_column("Family")
+    table.add_column("Target")
+    table.add_column("Status")
+    status = "downloaded" if result.downloaded else "dry-run"
+    if result.cache_refreshed:
+        status += " + fc-cache"
+    for path in result.target_paths:
+        table.add_row(result.family, str(path), status)
+    console.print(table)
+
+
 def _install_missing_from_resolution(
     folder: Path,
     *,
@@ -591,18 +640,38 @@ def _install_missing_from_resolution(
         },
         key=str.casefold,
     )
-    if not apt_packages:
-        console.print("[yellow]Aucun paquet apt exécutable dans les recommandations.[/yellow]")
+    google_families = tuple(
+        sorted(
+            {
+                family
+                for family, source, _package, _command in rows
+                if source == "google-fonts"
+            },
+            key=str.casefold,
+        )
+    )
+    if not apt_packages and not google_families:
+        console.print("[yellow]Aucune action exécutable dans les recommandations.[/yellow]")
         return
-    if not yes and not typer.confirm(
-        "Exécuter sudo apt install pour les paquets recommandés ?"
-    ):
+    actions: list[str] = []
+    if apt_packages:
+        actions.append("sudo apt install " + " ".join(apt_packages))
+    for family in google_families:
+        actions.append(f"install-google-font {family}")
+    if not yes and not typer.confirm("Exécuter ces installations ?\n" + "\n".join(actions)):
         console.print("[yellow]Installation annulée[/yellow]")
         return
-    command = ["sudo", "apt", "install", *apt_packages]
-    result = subprocess.run(command, check=False)
-    if result.returncode != 0:
-        raise typer.Exit(code=result.returncode)
+    if apt_packages:
+        command = ["sudo", "apt", "install", *apt_packages]
+        result = subprocess.run(command, check=False)
+        if result.returncode != 0:
+            raise typer.Exit(code=result.returncode)
+    for family in google_families:
+        try:
+            _print_google_install_report(install_google_font_file(family))
+        except GoogleFontsError as exc:
+            console.print(f"[red]{family}: {exc}[/red]")
+            raise typer.Exit(code=1) from exc
 
 
 def _resolution_install_actions(
