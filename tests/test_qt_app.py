@@ -4,7 +4,9 @@ from pathlib import Path
 
 from pptx_font_resolver.models import FontStatus, FontSummary, ScanResult
 from pptx_font_resolver.qt_app import (
+    fallback_candidate,
     font_row,
+    fontist_candidate,
     fontist_unavailable_message,
     install_prompt_text,
     install_result_summary,
@@ -16,6 +18,7 @@ from pptx_font_resolver.qt_app import (
     resolution_row,
     safe_system_packages,
     summary_text,
+    system_package_candidate,
 )
 from pptx_font_resolver.resolution.models import FontCandidate, FontResolution, ResolutionReport
 
@@ -262,6 +265,49 @@ def test_safe_system_packages_excludes_high_risk_symbol_fonts():
 
     assert safe_system_packages(report) == ("fonts-crosextra-carlito",)
     assert "Unsafe recommendations: 1" in resolution_report_text(report)
+
+
+def test_selected_resolution_action_candidates_are_safe():
+    fontist = FontCandidate(
+        requested_family="Calibri",
+        provided_family="Calibri",
+        source="fontist",
+        relation="exact",
+        installable=True,
+        confidence=0.9,
+    )
+    system = FontCandidate(
+        requested_family="Calibri",
+        provided_family="Carlito",
+        source="distro-package",
+        relation="metric-compatible",
+        installable=True,
+        confidence=0.8,
+        package_name="fonts-crosextra-carlito",
+    )
+    resolution = FontResolution(
+        requested_family="Calibri",
+        exact_installed=False,
+        candidates=(fontist, system),
+        recommended_candidate=system,
+        recommended_action="install_metric_compatible",
+        risk_level="medium",
+        notes=(),
+    )
+    unsafe = FontResolution(
+        requested_family="Wingdings",
+        exact_installed=False,
+        candidates=(system,),
+        recommended_candidate=system,
+        recommended_action="unsafe_symbol_font",
+        risk_level="high",
+        notes=(),
+    )
+
+    assert fontist_candidate(resolution) == fontist
+    assert system_package_candidate(resolution) == system
+    assert fallback_candidate(resolution) == system
+    assert system_package_candidate(unsafe) is None
 
 
 def test_summary_text_counts_high_risk_and_missing_fonts(tmp_path):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 
 from pptx_font_resolver.cli import (
+    _filter_font_summaries,
     _fontist_unavailable_detail,
     _install_choice,
     _install_confirm_message,
@@ -12,6 +13,7 @@ from pptx_font_resolver.cli import (
     install_missing,
 )
 from pptx_font_resolver.fontist_backend import FontistInstallResult, FontistProbeResult
+from pptx_font_resolver.models import FontStatus, FontSummary
 
 
 class LicenseBackend:
@@ -92,3 +94,55 @@ def test_install_attempt_report_renders_statuses():
     assert "Rapport installation Fontist" in output
     assert "Aptos" in output
     assert "Cloud Font" in output
+
+
+def test_filter_font_summaries_defaults_to_problematic_fonts():
+    installed_clean = FontSummary(
+        family="Arial",
+        occurrences=1,
+        files=(),
+        embedded_in=(),
+        status=FontStatus("Arial", exact_installed=True),
+        metric_fallbacks=(),
+        risk_level="none",
+        risk_reason="exact family installed",
+        recommendation="nothing_to_do",
+    )
+    installed_low = FontSummary(
+        family="Noto Sans CJK SC Regular",
+        occurrences=1,
+        files=(),
+        embedded_in=(),
+        status=FontStatus("Noto Sans CJK SC Regular", exact_installed=True),
+        metric_fallbacks=(),
+        risk_level="low",
+        risk_reason="style suffix matched",
+        recommendation="nothing_to_do",
+    )
+    missing = FontSummary(
+        family="Calibri",
+        occurrences=1,
+        files=(),
+        embedded_in=(),
+        status=FontStatus("Calibri", exact_installed=False),
+        metric_fallbacks=("Carlito",),
+        risk_level="medium",
+        risk_reason="metric fallback exists",
+        recommendation="use_metric_compatible_fallback_or_install_exact_font",
+    )
+
+    assert _filter_font_summaries(
+        (installed_clean, installed_low, missing),
+        only_missing=False,
+        all_fonts=False,
+    ) == (installed_low, missing)
+    assert _filter_font_summaries(
+        (installed_clean, installed_low, missing),
+        only_missing=True,
+        all_fonts=True,
+    ) == (missing,)
+    assert _filter_font_summaries(
+        (installed_clean, installed_low, missing),
+        only_missing=False,
+        all_fonts=True,
+    ) == (installed_clean, installed_low, missing)

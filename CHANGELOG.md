@@ -34,6 +34,8 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
 - Optional `font-import` extra for reading font metadata with fontTools.
 - GUI `Resolve all`, `Explain`, `Import font file`, and `Install safe
   recommendations` actions backed by the multi-source resolution engine.
+- GUI selected-font actions for Fontist installs, single system-package installs,
+  fallback acceptance, and ignored recommendations.
 
 ### Changed
 
@@ -49,3 +51,5 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
 - The GUI now has a resolution-table mode with installed status, Fontist
   availability, recommended action, family, relation, source, risk, and file
   count columns.
+- The legacy `fonts` command now shows problematic fonts by default, reserves
+  exact installed fonts for `--all-fonts`, and keeps `--only-missing` strict.

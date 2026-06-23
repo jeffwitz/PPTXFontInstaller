@@ -77,13 +77,11 @@ def fonts(
     ] = False,
 ) -> None:
     analysis = analyze_path(folder, depth=depth, jobs=jobs, use_fontconfig=True)
-    summaries = analysis.fonts
-    if only_missing:
-        summaries = tuple(
-            font for font in summaries if not (font.status and font.status.exact_installed)
-        )
-    elif not all_fonts:
-        summaries = tuple(summaries)
+    summaries = _filter_font_summaries(
+        analysis.fonts,
+        only_missing=only_missing,
+        all_fonts=all_fonts,
+    )
 
     content = _format_output(format, analysis.scan, summaries, show_files=show_files)
     if output is not None:
@@ -443,6 +441,20 @@ def _format_resolution_output(format_name: str, report) -> str:
     if format_name == "table":
         return resolution_to_table(report)
     raise typer.BadParameter("format must be table, json, csv, or markdown")
+
+
+def _filter_font_summaries(summaries, *, only_missing: bool, all_fonts: bool):
+    if only_missing:
+        return tuple(
+            font for font in summaries if not (font.status and font.status.exact_installed)
+        )
+    if all_fonts:
+        return tuple(summaries)
+    return tuple(
+        font
+        for font in summaries
+        if font.risk_level != "none" or not (font.status and font.status.exact_installed)
+    )
 
 
 def _format_explanation(resolution) -> str:

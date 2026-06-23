@@ -131,6 +131,39 @@ def safe_system_packages(report: ResolutionReport) -> tuple[str, ...]:
     return tuple(sorted(packages, key=str.casefold))
 
 
+def fontist_candidate(resolution: FontResolution):
+    return next(
+        (
+            candidate
+            for candidate in resolution.candidates
+            if candidate.source == "fontist" and candidate.relation == "exact"
+        ),
+        None,
+    )
+
+
+def system_package_candidate(resolution: FontResolution):
+    candidate = resolution.recommended_candidate
+    if candidate is None:
+        return None
+    if resolution.risk_level == "high":
+        return None
+    if candidate.source != "distro-package" or candidate.package_name is None:
+        return None
+    if candidate.relation not in {"exact", "metric-compatible"}:
+        return None
+    return candidate
+
+
+def fallback_candidate(resolution: FontResolution):
+    candidate = resolution.recommended_candidate
+    if candidate is None:
+        return None
+    if candidate.relation not in {"metric-compatible", "visual-substitute", "generic"}:
+        return None
+    return candidate
+
+
 def resolution_report_text(report: ResolutionReport) -> str:
     return (
         "Resolution report\n"
@@ -374,6 +407,8 @@ def build_main_window(qt: dict[str, Any]):
             self.install_statuses: dict[str, str] = {}
             self.install_messages: dict[str, str] = {}
             self.pending_install_summary: str | None = None
+            self.accepted_fallbacks: set[str] = set()
+            self.ignored_fonts: set[str] = set()
 
             self.path_edit = QLineEdit()
             self.path_edit.setPlaceholderText("Folder containing PPTX or DOCX files")
@@ -389,8 +424,12 @@ def build_main_window(qt: dict[str, Any]):
             self.install_all_button = QPushButton("Install all missing")
             self.resolve_button = QPushButton("Resolve all")
             self.explain_button = QPushButton("Explain")
+            self.install_fontist_button = QPushButton("Install via Fontist")
+            self.install_system_button = QPushButton("Install system package")
             self.safe_install_button = QPushButton("Install safe recommendations")
             self.import_font_button = QPushButton("Import font file")
+            self.accept_fallback_button = QPushButton("Accept fallback")
+            self.ignore_button = QPushButton("Ignore")
             self.export_json_button = QPushButton("Export JSON")
             self.export_csv_button = QPushButton("Export CSV")
             self.export_md_button = QPushButton("Export Markdown")
@@ -424,8 +463,12 @@ def build_main_window(qt: dict[str, Any]):
 
             exports = QHBoxLayout()
             exports.addWidget(self.explain_button)
+            exports.addWidget(self.install_fontist_button)
+            exports.addWidget(self.install_system_button)
             exports.addWidget(self.safe_install_button)
             exports.addWidget(self.import_font_button)
+            exports.addWidget(self.accept_fallback_button)
+            exports.addWidget(self.ignore_button)
             exports.addStretch(1)
             exports.addWidget(self.export_json_button)
             exports.addWidget(self.export_csv_button)
@@ -449,8 +492,12 @@ def build_main_window(qt: dict[str, Any]):
             self.install_all_button.clicked.connect(self.install_all_missing_fonts)
             self.resolve_button.clicked.connect(self.resolve_all_fonts)
             self.explain_button.clicked.connect(self.explain_selected_font)
+            self.install_fontist_button.clicked.connect(self.install_selected_via_fontist)
+            self.install_system_button.clicked.connect(self.install_selected_system_package)
             self.safe_install_button.clicked.connect(self.install_safe_recommendations)
             self.import_font_button.clicked.connect(self.import_font_file)
+            self.accept_fallback_button.clicked.connect(self.accept_selected_fallback)
+            self.ignore_button.clicked.connect(self.ignore_selected_resolution)
             self.table.itemSelectionChanged.connect(self.show_selected_details)
             self.table.itemChanged.connect(self.sync_install_header_state)
             self.table.horizontalHeader().sectionClicked.connect(
@@ -464,8 +511,12 @@ def build_main_window(qt: dict[str, Any]):
             self.install_all_button.setEnabled(False)
             self.resolve_button.setEnabled(False)
             self.explain_button.setEnabled(False)
+            self.install_fontist_button.setEnabled(False)
+            self.install_system_button.setEnabled(False)
             self.safe_install_button.setEnabled(False)
             self.import_font_button.setEnabled(False)
+            self.accept_fallback_button.setEnabled(False)
+            self.ignore_button.setEnabled(False)
 
         def configure_install_header(self) -> None:
             item = QTableWidgetItem("Install")
@@ -561,7 +612,11 @@ def build_main_window(qt: dict[str, Any]):
             self.install_button.setEnabled(has_installable)
             self.install_all_button.setEnabled(has_missing)
             self.explain_button.setEnabled(False)
+            self.install_fontist_button.setEnabled(False)
+            self.install_system_button.setEnabled(False)
             self.safe_install_button.setEnabled(False)
+            self.accept_fallback_button.setEnabled(False)
+            self.ignore_button.setEnabled(False)
             self.sync_install_header_state()
 
         def resolve_all_fonts(self) -> None:
@@ -620,6 +675,7 @@ def build_main_window(qt: dict[str, Any]):
             self.install_button.setEnabled(False)
             self.install_all_button.setEnabled(False)
             self.explain_button.setEnabled(bool(resolutions))
+            self.update_resolution_action_buttons(None)
             self.safe_install_button.setEnabled(bool(safe_system_packages(self.resolution_report)))
 
         def displayed_resolutions(self) -> tuple[FontResolution, ...]:
@@ -713,7 +769,13 @@ def build_main_window(qt: dict[str, Any]):
                     item.setToolTip(tooltip)
 
         def apply_resolution_status(self, row: int, resolution: FontResolution) -> None:
-            if resolution.exact_installed:
+            if resolution.requested_family in self.ignored_fonts:
+                color = QColor("#e9ecef")
+                tooltip = "Ignored for this GUI session."
+            elif resolution.requested_family in self.accepted_fallbacks:
+                color = QColor("#d9f2df")
+                tooltip = "Fallback accepted for this GUI session."
+            elif resolution.exact_installed:
                 color = QColor("#d9f2df")
                 tooltip = "Exact font installed."
             elif resolution.risk_level == "high":
@@ -738,6 +800,7 @@ def build_main_window(qt: dict[str, Any]):
                 return
             payload = selected[0].data(Qt.UserRole)
             if isinstance(payload, FontResolution):
+                self.update_resolution_action_buttons(payload)
                 family_files = {} if self.analysis is None else files_by_family(self.analysis.fonts)
                 self.details.setPlainText(
                     resolution_details_text(
@@ -746,6 +809,7 @@ def build_main_window(qt: dict[str, Any]):
                     )
                 )
                 return
+            self.update_resolution_action_buttons(None)
             font = payload
             lines = [
                 f"Font: {font.family}",
@@ -756,6 +820,25 @@ def build_main_window(qt: dict[str, Any]):
             ]
             lines.extend(f"- {path}" for path in font.files)
             self.details.setPlainText("\n".join(lines))
+
+        def selected_resolution(self) -> FontResolution | None:
+            selected = self.table.selectedItems()
+            if not selected:
+                return None
+            payload = selected[0].data(Qt.UserRole)
+            return payload if isinstance(payload, FontResolution) else None
+
+        def update_resolution_action_buttons(self, resolution: FontResolution | None) -> None:
+            if resolution is None:
+                self.install_fontist_button.setEnabled(False)
+                self.install_system_button.setEnabled(False)
+                self.accept_fallback_button.setEnabled(False)
+                self.ignore_button.setEnabled(False)
+                return
+            self.install_fontist_button.setEnabled(fontist_candidate(resolution) is not None)
+            self.install_system_button.setEnabled(system_package_candidate(resolution) is not None)
+            self.accept_fallback_button.setEnabled(fallback_candidate(resolution) is not None)
+            self.ignore_button.setEnabled(True)
 
         def explain_selected_font(self) -> None:
             selected = self.table.selectedItems()
@@ -775,6 +858,105 @@ def build_main_window(qt: dict[str, Any]):
             )
             self.details.setPlainText(text)
             QMessageBox.information(self, "Font explanation", text)
+
+        def install_selected_via_fontist(self) -> None:
+            resolution = self.selected_resolution()
+            if resolution is None:
+                QMessageBox.information(self, "Install via Fontist", "Select a font row first.")
+                return
+            candidate = fontist_candidate(resolution)
+            if candidate is None:
+                QMessageBox.information(
+                    self,
+                    "Install via Fontist",
+                    "This font is not available through Fontist.",
+                )
+                return
+            answer = self.ask_install_decision(resolution.requested_family)
+            if answer == "no":
+                return
+            self.start_font_install(
+                [resolution.requested_family],
+                f"Installing {resolution.requested_family} with Fontist...",
+            )
+
+        def install_selected_system_package(self) -> None:
+            resolution = self.selected_resolution()
+            if resolution is None:
+                QMessageBox.information(
+                    self,
+                    "Install system package",
+                    "Select a font row first.",
+                )
+                return
+            candidate = system_package_candidate(resolution)
+            if candidate is None or candidate.package_name is None:
+                QMessageBox.information(
+                    self,
+                    "Install system package",
+                    "No safe system package recommendation is available for this font.",
+                )
+                return
+            message = QMessageBox(self)
+            message.setWindowTitle("Install system package")
+            message.setText(
+                "Run sudo apt install for this recommended package?\n\n"
+                f"{candidate.package_name}"
+            )
+            yes_button = message.addButton("Yes", QMessageBox.YesRole)
+            no_button = message.addButton("No", QMessageBox.NoRole)
+            message.setDefaultButton(no_button)
+            message.exec()
+            if message.clickedButton() != yes_button:
+                return
+            result = subprocess.run(
+                ["sudo", "apt", "install", candidate.package_name],
+                check=False,
+            )
+            if result.returncode == 0:
+                QMessageBox.information(
+                    self,
+                    "Install system package",
+                    "System package installed. Refreshing scan.",
+                )
+                self.start_scan()
+            else:
+                QMessageBox.critical(
+                    self,
+                    "Install system package failed",
+                    f"apt exited with code {result.returncode}",
+                )
+
+        def accept_selected_fallback(self) -> None:
+            resolution = self.selected_resolution()
+            if resolution is None:
+                QMessageBox.information(self, "Accept fallback", "Select a font row first.")
+                return
+            candidate = fallback_candidate(resolution)
+            if candidate is None:
+                QMessageBox.information(
+                    self,
+                    "Accept fallback",
+                    "No fallback recommendation is available for this font.",
+                )
+                return
+            self.accepted_fallbacks.add(resolution.requested_family)
+            self.ignored_fonts.discard(resolution.requested_family)
+            self.details.setPlainText(
+                f"Accepted fallback for {resolution.requested_family}: "
+                f"{candidate.provided_family} ({candidate.relation})."
+            )
+            self.populate_resolution_table()
+
+        def ignore_selected_resolution(self) -> None:
+            resolution = self.selected_resolution()
+            if resolution is None:
+                QMessageBox.information(self, "Ignore", "Select a font row first.")
+                return
+            self.ignored_fonts.add(resolution.requested_family)
+            self.accepted_fallbacks.discard(resolution.requested_family)
+            self.details.setPlainText(f"Ignored {resolution.requested_family}.")
+            self.populate_resolution_table()
 
         def install_safe_recommendations(self) -> None:
             if self.resolution_report is None:
