@@ -55,3 +55,17 @@ def test_invalid_docx_is_reported_without_stopping_scan(tmp_path):
     assert len(result.documents) == 1
     assert len(result.errors) == 1
     assert result.errors[0].path.name == "broken.docx"
+
+
+def test_scan_folder_reports_oversized_xml_and_continues(tmp_path, monkeypatch):
+    from pptx_font_resolver import scanner
+
+    monkeypatch.setattr(scanner, "MAX_XML_SIZE", 10)
+    make_pptx(tmp_path / "oversized.pptx", {"ppt/slides/slide1.xml": slide_xml("Calibri")})
+    make_pptx(tmp_path / "valid.pptx", {"ppt/slides/slide1.xml": ""})
+
+    result = scan_folder(tmp_path, jobs=1)
+
+    assert len(result.documents) == 1
+    assert len(result.errors) == 1
+    assert "XML entry exceeds limit" in result.errors[0].message

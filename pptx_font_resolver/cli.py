@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import Annotated
 
@@ -12,6 +13,11 @@ from .analysis import analyze_path
 from .fontist_backend import FontistBackend, FontistInstallResult, output_mentions_license
 from .report import to_csv, to_json, to_markdown, write_report
 from .resolution import default_engine
+from .resolution.manual_import import (
+    ManualFontImportResult,
+    ManualImportError,
+    import_font_path,
+)
 from .resolution.models import ResolutionReport
 from .resolution.report import (
     to_csv as resolution_to_csv,
@@ -153,6 +159,91 @@ def resolve(
         write_report(output, content)
 
 
+@app.command()
+def explain(
+    font_name: Annotated[str, typer.Argument(help="Font family to explain.")],
+    provider: Annotated[
+        str,
+        typer.Option(help="fontist, apt, google, manual, or all."),
+    ] = "all",
+    distro: Annotated[str, typer.Option(help="debian or ubuntu.")] = "debian",
+    accept_license: Annotated[
+        bool,
+        typer.Option(help="Include license-accepting Fontist commands in the explanation."),
+    ] = False,
+) -> None:
+    if provider not in {"fontist", "apt", "google", "manual", "all"}:
+        raise typer.BadParameter("provider must be fontist, apt, google, manual, or all")
+    engine = default_engine(provider=provider, distro=distro, accept_license=accept_license)
+    resolution = engine.resolve_family(font_name)
+    console.print(_format_explanation(resolution))
+
+
+@app.command("import-font")
+def import_font(
+    font_file: Annotated[Path, typer.Argument(help="TTF, OTF, or TTC font file to import.")],
+    target: Annotated[
+        Path | None,
+        typer.Option(help="Target font directory."),
+    ] = None,
+    refresh_cache: Annotated[
+        bool,
+        typer.Option("--refresh-cache/--no-refresh-cache", help="Refresh Fontconfig cache."),
+    ] = True,
+    check_again: Annotated[
+        Path | None,
+        typer.Option(help="Folder, PPTX file, or DOCX file to resolve again after import."),
+    ] = None,
+    dry_run: Annotated[bool, typer.Option(help="Read metadata but do not copy.")] = False,
+    copy: Annotated[
+        bool,
+        typer.Option("--copy/--symlink", help="Copy the font file or create a symlink."),
+    ] = True,
+) -> None:
+    _run_manual_import(
+        font_file,
+        target=target,
+        recursive=False,
+        refresh_cache=refresh_cache,
+        check_again=check_again,
+        dry_run=dry_run,
+        copy=copy,
+    )
+
+
+@app.command("import-fonts")
+def import_fonts(
+    font_folder: Annotated[Path, typer.Argument(help="Folder containing TTF, OTF, or TTC files.")],
+    target: Annotated[
+        Path | None,
+        typer.Option(help="Target font directory."),
+    ] = None,
+    recursive: Annotated[bool, typer.Option("--recursive/--no-recursive")] = True,
+    dry_run: Annotated[bool, typer.Option(help="Read metadata but do not copy.")] = False,
+    copy: Annotated[
+        bool,
+        typer.Option("--copy/--symlink", help="Copy font files or create symlinks."),
+    ] = True,
+    refresh_cache: Annotated[
+        bool,
+        typer.Option("--refresh-cache/--no-refresh-cache", help="Refresh Fontconfig cache."),
+    ] = True,
+    check_again: Annotated[
+        Path | None,
+        typer.Option(help="Folder, PPTX file, or DOCX file to resolve again after import."),
+    ] = None,
+) -> None:
+    _run_manual_import(
+        font_folder,
+        target=target,
+        recursive=recursive,
+        refresh_cache=refresh_cache,
+        check_again=check_again,
+        dry_run=dry_run,
+        copy=copy,
+    )
+
+
 @app.command("install-font")
 def install_font(
     font_name: Annotated[str, typer.Argument(help="Font family to install.")],
@@ -207,6 +298,18 @@ def install_missing(
         bool,
         typer.Option(help="Show installable fonts but do not install."),
     ] = False,
+    provider: Annotated[
+        str,
+        typer.Option(help="fontist, apt, google, or all."),
+    ] = "fontist",
+    execute: Annotated[
+        bool,
+        typer.Option(help="Execute non-Fontist install commands such as sudo apt install."),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes/--no-yes", help="Confirm a grouped non-Fontist installation."),
+    ] = False,
     all_missing: Annotated[
         bool,
         typer.Option(
@@ -218,10 +321,24 @@ def install_missing(
         ),
     ] = False,
 ) -> None:
+    if provider not in {"fontist", "apt", "google", "all"}:
+        raise typer.BadParameter("provider must be fontist, apt, google, or all")
     if accept_license and not ask and not dry_run and not all_missing:
         raise typer.BadParameter(
             "install-missing cannot accept licenses without --ask confirmation per font"
         )
+    if provider != "fontist":
+        _install_missing_from_resolution(
+            folder,
+            depth=depth,
+            jobs=jobs,
+            provider=provider,
+            dry_run=dry_run,
+            execute=execute,
+            yes=yes,
+            accept_license=accept_license,
+        )
+        return
 
     analysis = analyze_path(folder, depth=depth, jobs=jobs, use_fontconfig=True)
     candidates = list(analysis.missing_fonts)
@@ -326,6 +443,188 @@ def _format_resolution_output(format_name: str, report) -> str:
     if format_name == "table":
         return resolution_to_table(report)
     raise typer.BadParameter("format must be table, json, csv, or markdown")
+
+
+def _format_explanation(resolution) -> str:
+    lines = [
+        f"Requested font: {resolution.requested_family}",
+        "",
+        "Exact font:",
+    ]
+    if resolution.exact_installed:
+        lines.append("  Installed exactly.")
+    else:
+        lines.append("  Not installed.")
+    recommended = resolution.recommended_candidate
+    lines.extend(
+        [
+            "",
+            "Recommended:",
+            f"  Action: {resolution.recommended_action}",
+            f"  Risk: {resolution.risk_level}",
+        ]
+    )
+    if recommended is None:
+        lines.append("  Candidate: none")
+    else:
+        lines.extend(
+            [
+                f"  Family: {recommended.provided_family}",
+                f"  Relation: {recommended.relation}",
+                f"  Source: {recommended.source}",
+            ]
+        )
+        if recommended.package_name:
+            lines.append(f"  Package: {recommended.package_name}")
+        if recommended.install_command:
+            lines.append(f"  Install command: {' '.join(recommended.install_command)}")
+        if recommended.license_hint:
+            lines.append(f"  License: {recommended.license_hint}")
+        if recommended.warning:
+            lines.append(f"  Warning: {recommended.warning}")
+    if resolution.notes:
+        lines.extend(["", "Notes:"])
+        lines.extend(f"  {note}" for note in resolution.notes)
+    return "\n".join(lines)
+
+
+def _run_manual_import(
+    path: Path,
+    *,
+    target: Path | None,
+    recursive: bool,
+    refresh_cache: bool,
+    check_again: Path | None,
+    dry_run: bool,
+    copy: bool,
+) -> None:
+    try:
+        results = import_font_path(
+            path,
+            target=target,
+            recursive=recursive,
+            dry_run=dry_run,
+            copy=copy,
+            refresh_cache=refresh_cache,
+        )
+    except ManualImportError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    _print_manual_import_report(results, dry_run=dry_run)
+    if check_again is not None:
+        resolve(check_again, format="table", all_fonts=True)
+
+
+def _print_manual_import_report(
+    results: tuple[ManualFontImportResult, ...],
+    *,
+    dry_run: bool,
+) -> None:
+    table = Table(title="Manual font import")
+    table.add_column("File")
+    table.add_column("Families")
+    table.add_column("Target")
+    table.add_column("Status")
+    for result in results:
+        if dry_run:
+            status = "dry-run"
+        elif result.copied:
+            status = "copied"
+        elif result.linked:
+            status = "symlinked"
+        else:
+            status = "read"
+        if result.cache_refreshed:
+            status += " + fc-cache"
+        table.add_row(
+            str(result.source_path),
+            ", ".join(result.family_names),
+            str(result.target_path),
+            status,
+        )
+    console.print(table)
+
+
+def _install_missing_from_resolution(
+    folder: Path,
+    *,
+    depth: str,
+    jobs: int,
+    provider: str,
+    dry_run: bool,
+    execute: bool,
+    yes: bool,
+    accept_license: bool,
+) -> None:
+    analysis = analyze_path(folder, depth=depth, jobs=jobs, use_fontconfig=False)
+    engine_provider = "all" if provider == "all" else provider
+    engine = default_engine(provider=engine_provider, accept_license=accept_license)
+    resolution_report = engine.resolve_many(
+        analysis.scan.unique_fonts,
+        scanned_files=len(analysis.scan.documents),
+    )
+    rows = _resolution_install_actions(resolution_report)
+    _print_resolution_install_actions(rows)
+    if not rows:
+        console.print("Aucune action installable détectée.")
+        return
+    if dry_run or not execute:
+        console.print("Aucune commande exécutée. Ajouter --execute pour lancer l'installation.")
+        return
+    apt_packages = sorted(
+        {
+            package
+            for _, source, package, _command in rows
+            if source == "distro-package" and package
+        },
+        key=str.casefold,
+    )
+    if not apt_packages:
+        console.print("[yellow]Aucun paquet apt exécutable dans les recommandations.[/yellow]")
+        return
+    if not yes and not typer.confirm(
+        "Exécuter sudo apt install pour les paquets recommandés ?"
+    ):
+        console.print("[yellow]Installation annulée[/yellow]")
+        return
+    command = ["sudo", "apt", "install", *apt_packages]
+    result = subprocess.run(command, check=False)
+    if result.returncode != 0:
+        raise typer.Exit(code=result.returncode)
+
+
+def _resolution_install_actions(
+    report: ResolutionReport,
+) -> list[tuple[str, str, str, tuple[str, ...] | None]]:
+    rows: list[tuple[str, str, str, tuple[str, ...] | None]] = []
+    for resolution in report.resolutions:
+        if resolution.exact_installed:
+            continue
+        candidate = resolution.recommended_candidate
+        if candidate is None or not candidate.installable:
+            continue
+        rows.append(
+            (
+                resolution.requested_family,
+                candidate.source,
+                candidate.package_name or "",
+                candidate.install_command,
+            )
+        )
+    return rows
+
+
+def _print_resolution_install_actions(
+    rows: list[tuple[str, str, str, tuple[str, ...] | None]],
+) -> None:
+    table = Table(title="Resolution install actions")
+    table.add_column("Font")
+    table.add_column("Source")
+    table.add_column("Package")
+    table.add_column("Command")
+    for family, source, package, command in rows:
+        table.add_row(family, source, package, "" if command is None else " ".join(command))
+    console.print(table)
 
 
 def _format_output(format_name: str, result, summaries, *, show_files: bool) -> str:

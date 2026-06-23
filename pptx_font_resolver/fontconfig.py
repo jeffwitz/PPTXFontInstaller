@@ -1,14 +1,27 @@
 from __future__ import annotations
 
 import subprocess
+from functools import lru_cache
 
 from .models import FontStatus
 
 
-def check_font(font_name: str) -> FontStatus:
+class FontconfigCache:
+    def __init__(self) -> None:
+        self.installed_families = installed_families()
+
+    def is_exact_installed(self, family: str) -> bool:
+        return _casefold(family) in self.installed_families
+
+    def match(self, family: str) -> tuple[str | None, str | None]:
+        return fc_match(family)
+
+
+def check_font(font_name: str, cache: FontconfigCache | None = None) -> FontStatus:
     try:
-        installed = installed_families()
-        matched_family, matched_file = fc_match(font_name)
+        fontconfig_cache = cache or FontconfigCache()
+        installed = fontconfig_cache.installed_families
+        matched_family, matched_file = fontconfig_cache.match(font_name)
     except FileNotFoundError as exc:
         return FontStatus(
             requested_family=font_name,
@@ -36,7 +49,7 @@ def check_font(font_name: str) -> FontStatus:
                 "matched installed base family after removing style suffix: "
                 f"{base_family}"
             )
-            matched_family, matched_file = fc_match(base_family)
+            matched_family, matched_file = fontconfig_cache.match(base_family)
 
     substituted = matched_family is not None and _casefold(matched_family) != requested_key
     return FontStatus(
@@ -64,6 +77,13 @@ def installed_families() -> set[str]:
             if normalized:
                 families.add(_casefold(normalized))
     return families
+
+
+installed_families = lru_cache(maxsize=1)(installed_families)
+
+
+def clear_fontconfig_cache() -> None:
+    installed_families.cache_clear()
 
 
 def fc_match(font_name: str) -> tuple[str | None, str | None]:

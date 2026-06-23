@@ -10,6 +10,9 @@ from .models import PresentationFonts, ScanError, ScanResult
 from .pptx_parser import parse_pptx
 
 SUPPORTED_SUFFIXES = (".pptx", ".docx")
+MAX_XML_SIZE = 20 * 1024 * 1024
+MAX_ARCHIVE_UNCOMPRESSED_SIZE = 500 * 1024 * 1024
+MAX_ARCHIVE_ENTRIES = 10000
 
 
 def default_jobs() -> int:
@@ -92,10 +95,40 @@ def discover_document_paths(
 def parse_document(path: Path) -> PresentationFonts:
     suffix = path.suffix.casefold()
     if suffix == ".pptx":
+        validate_archive_limits(path)
         return parse_pptx(path)
     if suffix == ".docx":
+        validate_archive_limits(path)
         return parse_docx(path)
     raise RuntimeError(f"unsupported document type: {path.suffix}")
+
+
+def validate_archive_limits(path: Path) -> None:
+    with zipfile.ZipFile(path) as archive:
+        entries = archive.infolist()
+        if len(entries) > MAX_ARCHIVE_ENTRIES:
+            raise RuntimeError(
+                f"archive has too many entries: {len(entries)} > {MAX_ARCHIVE_ENTRIES}"
+            )
+        total_size = sum(entry.file_size for entry in entries)
+        if total_size > MAX_ARCHIVE_UNCOMPRESSED_SIZE:
+            raise RuntimeError(
+                "archive uncompressed size exceeds limit: "
+                f"{total_size} > {MAX_ARCHIVE_UNCOMPRESSED_SIZE}"
+            )
+        oversized_xml = next(
+            (
+                entry
+                for entry in entries
+                if entry.filename.endswith(".xml") and entry.file_size > MAX_XML_SIZE
+            ),
+            None,
+        )
+        if oversized_xml is not None:
+            raise RuntimeError(
+                f"XML entry exceeds limit: {oversized_xml.filename} "
+                f"({oversized_xml.file_size} > {MAX_XML_SIZE})"
+            )
 
 
 def scan_folder(

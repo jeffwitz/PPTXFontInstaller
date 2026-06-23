@@ -13,7 +13,17 @@ from .models import FontResolution, ResolutionReport
 
 
 def resolution_report_to_dict(report: ResolutionReport) -> dict[str, Any]:
+    summary = {
+        "scanned_files": report.scanned_files,
+        "requested_fonts": report.requested_fonts,
+        "missing_fonts": report.missing_fonts,
+        "manual_required": report.manual_required,
+        "unsafe": report.unsafe,
+        "resolved_exact": report.resolved_exact,
+        "resolved_metric": report.resolved_metric,
+    }
     return {
+        "summary": summary,
         "scanned_files": report.scanned_files,
         "requested_fonts": report.requested_fonts,
         "missing_fonts": report.missing_fonts,
@@ -47,14 +57,17 @@ def to_csv(report: ResolutionReport) -> str:
         output,
         fieldnames=[
             "requested_family",
-            "exact_installed",
-            "recommended_action",
+            "status",
             "risk_level",
-            "provided_family",
-            "source",
+            "recommended_action",
+            "recommended_family",
             "relation",
+            "source",
             "package_name",
-            "notes",
+            "install_command",
+            "license_hint",
+            "warning",
+            "files",
         ],
     )
     writer.writeheader()
@@ -63,14 +76,26 @@ def to_csv(report: ResolutionReport) -> str:
         writer.writerow(
             {
                 "requested_family": resolution.requested_family,
-                "exact_installed": str(resolution.exact_installed).lower(),
-                "recommended_action": resolution.recommended_action,
+                "status": "installed" if resolution.exact_installed else "missing",
                 "risk_level": resolution.risk_level,
-                "provided_family": "" if candidate is None else candidate.provided_family,
-                "source": "" if candidate is None else candidate.source,
+                "recommended_action": resolution.recommended_action,
+                "recommended_family": "" if candidate is None else candidate.provided_family,
                 "relation": "" if candidate is None else candidate.relation,
+                "source": "" if candidate is None else candidate.source,
                 "package_name": "" if candidate is None else candidate.package_name or "",
-                "notes": ";".join(resolution.notes),
+                "install_command": ""
+                if candidate is None or candidate.install_command is None
+                else " ".join(candidate.install_command),
+                "license_hint": "" if candidate is None else candidate.license_hint or "",
+                "warning": ";".join(
+                    item
+                    for item in (
+                        "" if candidate is None else candidate.warning or "",
+                        *resolution.notes,
+                    )
+                    if item
+                ),
+                "files": "",
             }
         )
     return output.getvalue()
@@ -78,7 +103,7 @@ def to_csv(report: ResolutionReport) -> str:
 
 def to_markdown(report: ResolutionReport) -> str:
     lines = [
-        "# Font resolution report",
+        "## Missing fonts resolution report",
         "",
         f"- Scanned files: {report.scanned_files}",
         f"- Requested fonts: {report.requested_fonts}",
@@ -87,20 +112,19 @@ def to_markdown(report: ResolutionReport) -> str:
         f"- Manual imports required: {report.manual_required}",
         f"- Unsafe resolutions: {report.unsafe}",
         "",
-        "| Font | Action | Risk | Candidate | Source | Relation | Notes |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| Requested | Action | Recommended | Relation | Source | Risk |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     for resolution in report.resolutions:
         candidate = resolution.recommended_candidate
         lines.append(
-            "| {font} | {action} | {risk} | {candidate} | {source} | {relation} | {notes} |".format(
+            "| {font} | {action} | {candidate} | {relation} | {source} | {risk} |".format(
                 font=resolution.requested_family,
                 action=resolution.recommended_action,
+                candidate="-" if candidate is None else candidate.provided_family,
+                relation="-" if candidate is None else candidate.relation,
+                source="-" if candidate is None else candidate.source,
                 risk=resolution.risk_level,
-                candidate="" if candidate is None else candidate.provided_family,
-                source="" if candidate is None else candidate.source,
-                relation="" if candidate is None else candidate.relation,
-                notes="; ".join(resolution.notes),
             )
         )
     return "\n".join(lines) + "\n"

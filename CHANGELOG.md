@@ -28,6 +28,10 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
 - `resolve` CLI command with multi-source font-resolution reports for local
   fonts, Fontist, Debian/Ubuntu packages, Google Fonts metadata, curated
   fallbacks, manual imports, and unsafe symbol-font cases.
+- `explain`, `import-font`, and `import-fonts` CLI commands for inspecting a
+  single font recommendation and importing user-owned `.ttf`, `.otf`, or `.ttc`
+  files.
+- Optional `font-import` extra for reading font metadata with fontTools.
 
 ### Changed
 
@@ -38,3 +42,5 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
   family lookup fallback.
 - Symbol font and CJK-to-Latin substitutions now receive higher-risk
   recommendations.
+- Resolution JSON/CSV/Markdown reports now expose the CdC fields for action,
+  relation, source, package, install command, license hint, and warnings.

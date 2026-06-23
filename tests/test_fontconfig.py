@@ -41,3 +41,19 @@ def test_check_font_accepts_regular_style_suffix_when_base_family_exists(monkeyp
     assert status.matched_family == "Noto Sans CJK SC"
     assert status.is_substituted is False
     assert status.detection_note is not None
+
+
+def test_fontconfig_cache_loads_installed_families_once(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        fontconfig,
+        "installed_families",
+        lambda: calls.append("fc-list") or {"arial"},
+    )
+    monkeypatch.setattr(fontconfig, "fc_match", lambda name: ("Arial", "/fonts/Arial.ttf"))
+
+    cache = fontconfig.FontconfigCache()
+
+    assert cache.is_exact_installed("Arial") is True
+    assert cache.is_exact_installed("Arial") is True
+    assert calls == ["fc-list"]

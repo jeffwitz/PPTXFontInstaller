@@ -21,15 +21,43 @@ pptx-font-resolver scan ./documents --depth infinite
 pptx-font-resolver fonts ./documents --all-fonts --show-files
 pptx-font-resolver report ./documents --format json --output report.json
 pptx-font-resolver resolve ./documents --provider all --format markdown
+pptx-font-resolver explain "Calibri"
+pptx-font-resolver import-font ~/Downloads/Aptos.ttf
+pptx-font-resolver import-fonts ~/Downloads/fonts --dry-run
 pptx-font-resolver install-font "Aptos" --location user --accept-license
 pptx-font-resolver install-missing ./documents --ask --location user
 pptx-font-resolver install-missing ./documents --all --location user
+pptx-font-resolver install-missing ./documents --provider apt --dry-run
 pptx-font-resolver-gui
 ```
 
 No font is downloaded or installed automatically. Fontist installation support
 is intentionally interactive and requires explicit license acceptance through
 `--accept-license` or a GUI confirmation.
+
+## Fonts not available through Fontist
+
+Fontist is only one source. Some Office fonts are proprietary, absent from
+Fontist, or unsafe to replace automatically. `resolve` and `explain` combine
+Fontist, local Fontconfig data, Debian/Ubuntu package hints, curated
+metric-compatible replacements, visual fallback advice, and manual-import
+warnings.
+
+Metric-compatible replacements such as Carlito for Calibri and Caladea for
+Cambria reduce layout changes but are still substitutions. Visual fallbacks do
+not guarantee identical line breaks. Symbol fonts such as Wingdings are marked
+high risk because glyph meanings can change.
+
+Manual import is available for users who already have the legal right to use a
+`.ttf`, `.otf`, or `.ttc` file:
+
+```bash
+python -m pip install -e ".[font-import]"
+pptx-font-resolver import-font ~/Downloads/Aptos.ttf
+```
+
+This tool does not redistribute proprietary fonts. License acceptance is never
+automatic unless explicitly requested by the user.
 
 ## Current scope
 
@@ -44,6 +72,8 @@ is intentionally interactive and requires explicit license acceptance through
 - Multi-source resolution reports covering local fonts, Fontist availability,
   Debian/Ubuntu packages, Google Fonts metadata, curated fallbacks, manual
   import advice, and unsafe symbol-font cases.
+- Manual `.ttf`, `.otf`, and `.ttc` import commands with font family metadata
+  checks and optional Fontconfig cache refresh.
 - Risk classification for dangerous substitutions, including symbol fonts and
   CJK fonts substituted by Latin families.
 - Conservative style-suffix normalization, such as treating
