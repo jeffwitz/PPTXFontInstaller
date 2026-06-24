@@ -1,43 +1,42 @@
 Contributing
-===========
+============
 
-Merci de votre intérêt pour contribuer à ``pptx-font-resolver`` !
-Cette page explique comment **mettre en place un environnement de développement**, **suivre les conventions du projet**, et **soumettre des modifications**.
+Thank you for your interest in contributing to ``pptx-font-resolver``!  This page explains how to set up a development environment, follow the project's conventions, and submit changes.
 
 .. contents::
    :local:
 
 .. _dev-setup:
 
-Mise en place de l'environnement
--------------------------------
+Development environment setup
+-----------------------------
 
-1. **Cloner le dépôt** (si ce n'est pas déjà fait) :
+1. **Clone the repository** (if you haven't already):
 
    .. code-block:: bash
 
-      git clone https://github.com/<votre-utilisateur>/PPTXFontInstaller.git
+      git clone https://github.com/<your-username>/PPTXFontInstaller.git
       cd PPTXFontInstaller
 
-2. **Créer un environnement virtuel** :
+2. **Create a virtual environment**:
 
    .. code-block:: bash
 
       python -m venv .venv
       source .venv/bin/activate
 
-3. **Installer le package en mode développement** :
+3. **Install the package in development mode**:
 
    .. code-block:: bash
 
       pip install -e ".[dev,gui,font-import]"
 
    .. note::
-      - ``dev`` installe ``pytest`` et ``ruff`` pour les tests et le linting
-      - ``gui`` installe ``PySide6`` pour l'interface Qt
-      - ``font-import`` installe ``fonttools`` pour lire les métadonnées des polices
+      - ``dev`` installs ``pytest`` and ``ruff`` for testing and linting.
+      - ``gui`` installs ``PySide6`` for the Qt interface.
+      - ``font-import`` installs ``fonttools`` for reading font metadata.
 
-4. **Vérifier l'installation** :
+4. **Verify the installation**:
 
    .. code-block:: bash
 
@@ -46,340 +45,223 @@ Mise en place de l'environnement
       pytest --version
       ruff --version
 
-Validation avant commit
-----------------------
+.. _validation-before-commit:
 
-Avant de soumettre une modification, exécutez ces commandes pour valider votre travail :
+Validation before commit
+------------------------
+
+Before pushing a change, run the following commands to ensure everything works:
 
 .. code-block:: bash
 
-   # 1. Linting (pas d'erreurs)
+   # 1. Linting (no errors)
    ruff check .
 
-   # 2. Tests (102 tests doivent passer)
+   # 2. Tests (all must pass)
    pytest -q
 
-   # 3. Compilation des modules Python (pas d'erreurs)
+   # 3. Compile all Python modules (no syntax errors)
    python -m compileall pptx_font_resolver tests
 
-   # 4. Build de la documentation (pas d'erreurs)
+   # 4. Build the documentation (no errors or critical warnings)
    sphinx-build -b html docs docs/_build/html
 
 .. note::
-   - ``ruff check .`` doit retourner **0** problème
-   - ``pytest -q`` doit retourner **102 passed**
-   - ``compileall`` ne doit pas afficher d'erreur
-   - ``sphinx-build`` ne doit pas afficher d'erreur ou d'avertissement critique
+   - ``ruff check .`` should return **0 problems**.
+   - ``pytest -q`` should report **all tests passed**.
+   - ``compileall`` must finish without error.
+   - ``sphinx-build`` must complete without critical warnings.
 
-Conventions de code
------------------
+.. _code-conventions:
 
-1. **Nommage** :
-   - Modules : ``snake_case.py`` (ex: ``fontconfig.py``)
-   - Classes : ``PascalCase`` (ex: ``FontScanner``)
-   - Fonctions : ``snake_case()`` (ex: ``scan_folder()``)
-   - Variables : ``snake_case`` (ex: ``font_family``)
+Code conventions
+----------------
 
-2. **Docstrings** :
-   - Format **Google** ou **NumPy**
-   - Exemple Google :
-     
-     .. code-block:: python
-     
-        def scan_folder(path: str, depth: int, jobs: int) -> list[FileEntry]:
-            """Scan a folder for Office files.
+1. **Naming**:
+   - Modules: ``snake_case.py`` (e.g. ``fontconfig.py``)
+   - Classes: ``PascalCase`` (e.g. ``FontScanner``)
+   - Functions: ``snake_case()`` (e.g. ``scan_folder()``)
+   - Variables: ``snake_case`` (e.g. ``font_family``)
 
-            Args:
-                path: The folder to scan.
-                depth: Recursion depth (integer or "infinite").
-                jobs: Number of parallel workers.
+2. **Docstrings**:
+   - Use **Google** or **NumPy** style.
+   - Example (Google style)::
 
-            Returns:
-                A list of scanned file entries.
-            """
-   - Exemple NumPy :
-     
-     .. code-block:: python
-     
-        def resolve_font(family: str) -> FontResolution:
-            '''Resolve a font family to a recommended action.
+      def scan_folder(path: str, depth: int, jobs: int) -> list[FileEntry]:
+          """Scan a folder for Office files.
 
-            Parameters
-            ----------
-            family : str
-                The font family name to resolve.
+          Args:
+              path: The folder to scan.
+              depth: Recursion depth (integer or "infinite").
+              jobs: Number of parallel workers.
 
-            Returns
-            -------
-            FontResolution
-                The resolution object with recommended action.
-            '''
+          Returns:
+              A list of scanned file entries.
+          """
 
-3. **Typage** :
-   - Utilisez les types Python natifs et ``typing``
-   - Exemple : ``def scan_folder(path: str, depth: int | str) -> list[FileEntry]:``
+   - Example (NumPy style)::
 
-4. **Gestion des erreurs** :
-   - Utilisez des exceptions spécifiques (``ValueError``, ``FileNotFoundError``)
-   - Ne capturez pas ``Exception`` sauf si nécessaire
-   - Loggez les erreurs avec ``logging``
+      def resolve_font(family: str) -> FontResolution:
+          """Resolve a font family to a recommended action.
 
-5. **Imports** :
-   - Regroupez les imports par catégorie :
-     
-     .. code-block:: python
-     
-        # Standard library
-        import os
-        import zipfile
+          Parameters
+          ----------
+          family : str
+              The font family name to resolve.
 
-        # Third-party
-        from typer import Typer
-        from rich.console import Console
+          Returns
+          -------
+          FontResolution
+              The resolution object with recommended action.
+          """
 
-        # Local application
-        from pptx_font_resolver.models import FileEntry
+3. **Typing**: Use native Python types and ``typing`` where appropriate, e.g. ``def scan_folder(path: str, depth: int | str) -> list[FileEntry]:``.
+
+4. **Error handling**: Raise specific exceptions (``ValueError``, ``FileNotFoundError``) and avoid catching generic ``Exception`` unless absolutely necessary. Log errors with the standard ``logging`` module.
+
+5. **Imports**: Group imports by category:
+
+   .. code-block:: python
+
+      # Standard library
+      import os
+      import zipfile
+
+      # Third‑party
+      from typer import Typer
+      from rich.console import Console
+
+      # Local application
+      from pptx_font_resolver.models import FileEntry
 
 .. _tests-guidelines:
 
-Lignes directrices pour les tests
--------------------------------
+Test guidelines
+----------------
 
-1. **Couverture** :
-   - Tous les modules doivent avoir des tests
-   - Les tests critiques : ``scanner``, ``resolution/engine``, ``fontconfig``, ``qt_app``
-   - Objectif : **100% des fonctions publiques testées**
+1. **Coverage**: Every public function should have a test. Critical modules include ``scanner``, ``resolution/engine``, ``fontconfig`` and ``qt_app``. Aim for **100 % of public APIs** covered.
+2. **Structure**: Tests live in ``tests/`` and follow the ``test_<module>.py`` naming convention.
+3. **Fixtures**: Use ``conftest.py`` for shared fixtures such as temporary font directories.
+4. **Test cases**: Cover normal operation, edge cases (corrupt files, missing fonts, substitution), and error handling.
+5. **GUI tests**: Run with ``QT_QPA_PLATFORM=offscreen`` to avoid opening a window.
 
-2. **Structure des tests** :
-   - Fichiers : ``test_<module>.py`` dans ``tests/``
-   - Exemple : ``tests/test_scanner.py`` pour ``pptx_font_resolver/scanner.py``
-   - Utilisez ``pytest`` et ``pytest.mark.parametrize`` pour les cas multiples
-
-3. **Fixtures** :
-   - Utilisez ``conftest.py`` pour les fixtures partagées
-   - Exemple : ``tmp_font_dir`` pour un dossier temporaire de polices
-
-4. **Cas de test** :
-   - Cas normaux : Fichiers valides, polices installées
-   - Cas limites : Fichiers corrompus, polices manquantes, substitutions
-   - Cas d'erreur : Exceptions, timeouts, permissions
-
-5. **Tests GUI** :
-   - Utilisez ``QT_QPA_PLATFORM=offscreen`` pour tester sans interface graphique
-   - Exemple : ``tests/test_qt_app.py``
-
-Exemple de test
-~~~~~~~~~~~~
-
-.. code-block:: python
+Example test (Google style)::
 
    def test_scan_folder(tmp_path):
-       """Test that scan_folder discovers .pptx and .docx files."""
-       # Créer des fichiers de test
+       """Test that ``scan_folder`` discovers ``.pptx`` and ``.docx`` files."""
        (tmp_path / "pres.pptx").touch()
        (tmp_path / "doc.docx").touch()
-       
-       # Exécuter
        results = scan_folder(str(tmp_path), depth=1, jobs=1)
-       
-       # Vérifier
        assert len(results) == 2
        assert any(r.path.endswith("pres.pptx") for r in results)
        assert any(r.path.endswith("doc.docx") for r in results)
 
 .. _commit-guidelines:
 
-Lignes directrices pour les commits
--------------------------------
+Commit guidelines
+-----------------
 
-1. **Message de commit** :
-   - Format : ``[type] Description``
-   - Exemples :
-     
-     .. code-block:: text
-     
-        [feat] Ajouter support des polices CJK
-        
-        - pptx_font_resolver/fontconfig.py: normaliser "Noto Sans CJK SC Regular"
-        - tests/test_fontconfig.py: ajouter cas CJK
-        - docs/user/troubleshooting.rst: ajouter section CJK
-        
-        Closes #123
+1. **Commit message**:
+   - Format: ``[type] Short description``
+   - Types: ``feat``, ``fix``, ``docs``, ``test``, ``refactor``, ``chore``.
+   - Example::
 
-        [fix] Corriger crash lors du scan de fichiers corrompus
-        
-        - pptx_font_resolver/scanner.py: ajouter guard contre fichiers ZIP invalides
-        - tests/test_scanner.py: ajouter cas de fichier corrompu
-        
-        Fixes #456
+      [feat] Add CLI command to list Fontconfig fallbacks
 
-   - Types de commit :
-     
-     - ``[feat]`` : Nouvelle fonctionnalité
-     - ``[fix]`` : Correction de bug
-     - ``[docs]`` : Mise à jour de la documentation
-     - ``[test]`` : Ajout ou mise à jour de tests
-     - ``[refactor]`` : Refactoring sans changement de comportement
-     - ``[chore]`` : Maintenance (CI, dépendances, etc.)
-
-2. **Scope** :
-   - Un commit = une modification cohérente
-   - Évitez les commits "fourre-tout" avec plusieurs changements non liés
-
-3. **Branches** :
-   - Développez directement sur ``main``
-   - ``git commit && git push origin main`` après validation
+2. **Scope**: Keep each commit focused on a single logical change.
+3. **Branching**: Work directly on ``main``; push when the change is ready and passes all checks.
 
 .. _pr-guidelines:
 
-Lignes directrices pour les Pull Requests
-------------------------------------
+Pull‑request guidelines
+-----------------------
 
-1. **Titre** :
-   - Suivez le format des commits : ``[type] Description``
-   - Exemple : ``[feat] Ajouter CLI pour lister les fallbacks``
-
-2. **Description** :
-   - Expliquez **pourquoi** le changement est nécessaire
-   - Listez les **changements** effectués
-   - Mentionnez les **issues** fermées (``Closes #123``)
-   - Ajoutez des **captures d'écran** si l'interface est modifiée
-
-3. **Validation** :
-   - La PR doit passer tous les tests CI
-   - La PR doit être reviewée par au moins un contributeur
-   - La PR doit être **squash-merge** dans ``main``
-
-Exemple de description de PR
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: markdown
-
-   Ajoute le CLI pour gérer les fallbacks Fontconfig
-   
-   **Pourquoi** : Les utilisateurs veulent lister/supprimer les alias sans éditer manuellement les fichiers.
-   
-   **Changements** :
-   - Ajout de ``pptx-font-resolver list-fallbacks``
-   - Ajout de ``pptx-font-resolver remove-fallback <family>``
-   - Mise à jour de ``docs/user/fallbacks.rst`` avec les nouvelles commandes
-   
-   **Validation** :
-   - [x] ``ruff check .`` → 0 problèmes
-   - [x] ``pytest -q`` → 102 passed
-   - [x] ``sphinx-build`` → 0 erreurs
-   
-   **Issues** : Relates to #789
+1. **Title**: Use the same ``[type] Description`` format as the commit.
+2. **Description**: Explain **why** the change is needed, list **what** was changed, and reference any related issues (e.g. ``Closes #123``).
+3. **Validation**: Ensure the CI pipeline passes (lint, tests, documentation build).
+4. **Review**: At least one other contributor must approve the PR before merging.
+5. **Merge method**: Use ``squash`` to keep a clean history.
 
 .. _publishing:
 
-Publier une nouvelle version
---------------------------
+Publishing a new release
+------------------------
 
-1. **Mettre à jour la version** :
-
-   .. code-block:: bash
-
-      # Dans pyproject.toml
-      version = "0.1.1"  # Incrémentez le patch ou le minor
-
-2. **Construire le package** :
+1. **Bump the version** in ``pyproject.toml`` (e.g. ``0.1.1``).
+2. **Build the package**:
 
    .. code-block:: bash
 
       pip install hatch
       hatch build
 
-3. **Publier sur PyPI** :
+3. **Publish to PyPI**:
 
    .. code-block:: bash
 
       hatch publish
 
-4. **Créer un tag Git** :
+4. **Create a Git tag** and push it:
 
    .. code-block:: bash
 
       git tag v0.1.1
       git push origin v0.1.1
 
-5. **Mettre à jour le CHANGELOG** :
-
-   .. code-block:: bash
-
-      # Ajoutez une entrée dans CHANGELOG.md
-      ## [0.1.1] - 2026-06-24
-      
-      ### Ajouté
-      - CLI ``list-fallbacks`` et ``remove-fallback``
-      
-      ### Corrigé
-      - Crash lors du scan de fichiers ZIP corrompus
+5. **Update ``CHANGELOG.md``** with a brief summary of changes.
 
 .. _resources:
 
-Ressources utiles
----------------
+Resources
+---------
 
-- **Documentation officielle** : https://pptx-font-resolver.readthedocs.io/
-- **Dépôt GitHub** : https://github.com/jeffwitz/PPTXFontInstaller
-- **Issues** : https://github.com/jeffwitz/PPTXFontInstaller/issues
-- **Discussions** : https://github.com/jeffwitz/PPTXFontInstaller/discussions
-
-- **Sphinx** : https://www.sphinx-doc.org/
-- **RTD Theme** : https://sphinx-rtd-theme.readthedocs.io/
-- **Typer** : https://typer.tiangolo.com/
-- **PySide6** : https://doc.qt.io/qtforpython/
-
+- **Official documentation**: https://pptx-font-resolver.readthedocs.io/
+- **GitHub repository**: https://github.com/jeffwitz/PPTXFontInstaller
+- **Issues**: https://github.com/jeffwitz/PPTXFontInstaller/issues
+- **Discussions**: https://github.com/jeffwitz/PPTXFontInstaller/discussions
 
 .. _faq-dev:
 
-FAQ Développeur
---------------
+Developer FAQ
+-------------
 
-**Comment déboguer un test qui échoue ?**
+**How do I debug a failing test?**
 
 .. code-block:: bash
 
    pytest -xvs tests/test_scanner.py::test_scan_folder
 
-**Comment tester la GUI sans interface graphique ?**
+**How do I test the GUI without a display?**
 
 .. code-block:: bash
 
    env QT_QPA_PLATFORM=offscreen pytest -xvs tests/test_qt_app.py
 
-**Comment ajouter une nouvelle dépendance ?**
+**How do I add a new development dependency?**
 
-1. Ajoutez-la dans ``pyproject.toml`` sous la section appropriée (``dev``, ``gui``, ``font-import``)
-2. Exécutez ``pip install -e ".[dev,gui,font-import]"`` pour la tester
-3. Mettez à jour ``docs/conf.py`` si la dépendance est utilisée dans la documentation
-4. Ajoutez des tests pour la nouvelle fonctionnalité
-5. Soumettez une PR
+1. Add it to the appropriate extra in ``pyproject.toml`` (``dev``, ``gui`` or ``font-import``).
+2. Run ``pip install -e .[dev]`` (or the relevant extra) to install it locally.
+3. Add tests if the dependency adds new functionality.
 
-**Comment contribuer à la documentation ?**
+**How do I contribute to the documentation?**
 
-- Modifiez les fichiers ``.rst`` dans ``docs/user/`` ou ``docs/api/``
-- Exécutez ``sphinx-build -b html docs docs/_build/html`` pour valider
-- Soumettez une PR avec le préfixe ``[docs]``
+Edit the ``.rst`` files under ``docs/`` and rebuild with ``sphinx-build -b html docs docs/_build/html``.  Commit with a ``[docs]`` prefix.
 
-Résumé des commandes utiles
+.. _commands-summary:
+
+Summary of useful commands
 --------------------------
 
 +-------------------------------------+--------------------------------------+
-| Objectif                            | Commande                             |
-+=====================================+======================================+
-| Installer en dev                    | pip install -e ".[dev,gui,font-import]" |
-+-------------------------------------+--------------------------------------+
-| Lancer les tests                    | pytest -q                           |
-+-------------------------------------+--------------------------------------+
-| Lancer le linting                  | ruff check .                        |
-+-------------------------------------+--------------------------------------+
-| Build la documentation             | sphinx-build -b html docs docs/_build/html |
-+-------------------------------------+--------------------------------------+
-| Tester la GUI (offscreen)          | env QT_QPA_PLATFORM=offscreen pptx-font-resolver-gui |
-+-------------------------------------+--------------------------------------+
-| Vérifier les imports                | python -m compileall pptx_font_resolver tests |
-+-------------------------------------+--------------------------------------+
+| Goal                               | Command                               |
+|=====================================|======================================|
+| Install development environment      | pip install -e ".[dev,gui,font-import]" |
+| Run all tests                       | pytest -q                            |
+| Run the linter                      | ruff check .                         |
+| Build the documentation             | sphinx-build -b html docs docs/_build/html |
+| Test the GUI offscreen              | env QT_QPA_PLATFORM=offscreen pptx-font-resolver-gui |
+| Verify imports                      | python -m compileall pptx_font_resolver tests |
+|-------------------------------------+--------------------------------------|
 
-Si vous avez des questions, ouvrez une **discussion** sur GitHub ou contactez le mainteneur.
+If you have any questions, feel free to open a **discussion** on GitHub or contact the maintainer.
+
